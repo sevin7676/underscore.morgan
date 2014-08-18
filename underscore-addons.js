@@ -40,8 +40,9 @@ _.toStr = function (obj, defaultOnFail) {
 * (Note: will convert 'px' to int)
 * @param {object} obj - object to attempt to convert
 * @param {int} [defaultOnFail=-1] - value to return if the passed object fails to convert to int
+* @param {bool} [doNotAllowFormatted=false] - pass true to prevent parsing formatted which removes dollar symbol, commas, and assumes negative for parenthesis
 */
-_.toInt= function (obj, defaultOnFail) {
+_.toInt= function (obj, defaultOnFail, doNotAllowFormatted) {
     try {
         if (isNaN(parseInt(defaultOnFail, 10))) {
             defaultOnFail = -1;
@@ -51,6 +52,17 @@ _.toInt= function (obj, defaultOnFail) {
         defaultOnFail = -1;
     }
     try {
+        if(!doNotAllowFormatted){
+            obj = obj.toString().trim();
+            if(obj.toString().substr(0,1) =="("){//first char is paren, use accounting format negative
+                //note that replacements for parent are not global intentionally
+                obj = obj.toString().replace("(","");
+                obj = obj.toString().replace(")","");
+                obj ="-"+ obj;//add negative sign
+            }
+            obj = obj.toString().replace(new RegExp(",","g"),"");//remove all commas
+            obj = obj.replace("$","");//remove currency
+        }
         var r = parseInt(obj, 10);
         if (!isNaN(r)) {
             return r;
@@ -229,7 +241,34 @@ _.isError = function(obj){
     return false;
 };
 
+/**
+ * Returns true if the passed object is a Date or it can be successfully parsed into a date;
+ * Will return false if empty object or empty string passed
+ */
+_.isDate = function(obj){
+    try{
+        if(_.empty(obj)){
+            return false;
+        }
+        if(obj.constructor.name ==='Date'){
+            return true;
+        }
+        if( new Date(obj.toString()) =="Invalid Date"){
+            return false;
+        }
+        return true;
+    }
+    catch(ex){}
+}
 
+/**
+ * gets distinct values as an array from an array of objects (gets all distinct values for a single column from a datatable)
+ * @param {[object]} list - array of objects with same properties (datatable)
+ * @param {string} propertyName - name of the column to get distinct values for
+ */
+_.distinct= function(list, propertyName){
+    return _.chain(list).pluck(propertyName).sort().uniq(true).value();
+}
 
 /*
 NOTE: this appears to be the proper way to add functions, but I don't want to do it this way because tern fails to recognize is properly
