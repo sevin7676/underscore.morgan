@@ -1,15 +1,15 @@
-/// <reference path="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.6.0/underscore.js" />
+/// <reference path="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/2.4.1/lodash.js" />
+/*jshint maxerr:10000 */
 
 /*     Created: 6.6.2014
-*          GIT: https://github.com/sevin7676/underscore.morgan
+ *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
- *     Purpose: Add ons for underscore.js
+ *     Purpose: Add ons for lodash.js (UPDATED 8.20.2014 to use lodash instead of underscore)
  * Description: Adds additional functionality to underscore.js (which is in AP_Common/live folder)
  *              StandardScripts.js uses underscore, and this is also included.
  *              C# StandardMethod.JS_Header_Include automatically includes this when underscore.js is included
                 Intentionally does not use _.mixin as its not needed due to simplicity of these functions and the fact that _.mixin doesnt work properly with tern
  */
-
 
 
 /**
@@ -269,6 +269,29 @@ _.isDate = function(obj){
 _.distinct= function(list, propertyName){
     return _.chain(list).pluck(propertyName).sort().uniq(true).value();
 }
+
+/**
+ * Merge an unknown parameter with a deafult object to get a parameter vale (for optional default object parameters);
+ * Uses lodashes deep merge function;
+ * Catches and logs errors;
+ * @param {object} [defaultObject={}] - an object that contains default values for the parameter (does not have to be plain object)
+ * @param {any} [parameter={}] - any value (nul, undefined, object, string, etc) to be merged with defaultObject, wont be merged unless it passes the isObject check (which is true for functions)
+ */
+_.mergeDefault= function(defaultObject, parameter){
+    var r ={};
+    try{
+        //default object is required... but just in case lets return empty object instead of error
+        defaultObject = _.isObject(defaultObject) ? defaultObject : {};
+        parameter = _.isObject(parameter) ? parameter : {};
+        r= _.merge(defaultObject, parameter);
+    }
+    catch(ex){
+        setTimeout(function(){
+           throw ex;
+        },0);
+    }
+    return r;
+};
 
 /*
 NOTE: this appears to be the proper way to add functions, but I don't want to do it this way because tern fails to recognize is properly
