@@ -2,7 +2,8 @@
 
 /*jshint maxerr:10000 */
 
-/*     Created: 6.6.2014
+/*     Version: 1.01
+ *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
  *     Purpose: Add ons for lodash.js (UPDATED 8.20.2014 to use lodash instead of underscore)
@@ -44,7 +45,9 @@ _.toStr = function(obj, defaultOnFail) {
             r = obj.toString();
         }
     }
-    catch (ex) {r = defaultOnFail;}
+    catch (ex) {
+        r = defaultOnFail;
+    }
     return r;
 };
 
@@ -58,7 +61,7 @@ _.toStr = function(obj, defaultOnFail) {
  */
 _.toInt = function(obj, defaultOnFail, doNotAllowFormatted) {
     try {
-        if(typeof defaultOnFail == 'undefined'){
+        if (typeof defaultOnFail == 'undefined') {
             defaultOnFail = -1;
         }
         else if (isNaN(parseInt(defaultOnFail, 10))) {
@@ -69,11 +72,11 @@ _.toInt = function(obj, defaultOnFail, doNotAllowFormatted) {
         defaultOnFail = -1;
     }
     try {
-        if(_.isBoolean(obj)){
-            if(obj===true){
+        if (_.isBoolean(obj)) {
+            if (obj === true) {
                 return 1;
             }
-            else{
+            else {
                 return 0;
             }
         }
@@ -184,8 +187,8 @@ _.empty = function(obj) {
         if (obj.toString().trim().length === 0) {
             return true;
         }
-        if(_.isPlainObject(obj)){
-            if(_.keys(obj).length===0){//number of keys in object
+        if (_.isPlainObject(obj)) {
+            if (_.keys(obj).length === 0) { //number of keys in object
                 return true;
             }
         }
@@ -193,13 +196,13 @@ _.empty = function(obj) {
         if (!obj) {
             return true;
         }*/
-        
+
         /* note: dont need this test as any number would passa above tests, and false is returned if below as default
         if(_.isNumber(obj)){
             return false;//number are not empty;
             //added this on 10.1.2014- dont want '0' to be evaluated as empty
         }*/
-        
+
         return false; //tests passed, string contains something
     }
     catch (ex) {
@@ -314,7 +317,7 @@ _.isDate = function(obj) {
 };
 
 (function() {
-    try{
+    try {
         //override original
         if (_.hasOwnProperty('IsNumber')) {
             _.originalIsNumber = _.isNumber;
@@ -329,17 +332,17 @@ _.isDate = function(obj) {
             return !isNaN(parseFloat(obj)) && isFinite(obj);
         };
     }
-    catch(ex){
+    catch (ex) {
         setTimeout(function() {
             throw ex;
-        },0);
+        }, 0);
     }
 }());
 
 /**
  * gets distinct values as an array from an array of objects (gets all distinct values for a single column from a datatable)
  * @param {[object]} list - array of objects with same properties (datatable)
- * @param {string} propertyName - name of the column to get distinct values for
+ * @param {string} [propertyName] - name of the column to get distinct values for or blank if simple array
  */
 _.distinct = function(list, propertyName) {
     return _.chain(list).pluck(propertyName).sort().uniq(true).value();
@@ -366,6 +369,96 @@ _.mergeDefault = function(defaultObject, parameter) {
         }, 0);
     }
     return r;
+};
+
+/**
+ * @link https://github.com/jashkenas/underscore/issues/310#issuecomment-2510502  *
+ * @example for deboucneRecude (not in comments above func as its messy in tern)
+ *
+ *   self.m.setValueInput = _.debounceReduce(self.m.setValueInput, 20, function(allArgs, currentArgs) {
+ *      //default all args
+ *      if(!_.isArray(allArgs)){
+ *          allArgs=[false,false];//setValueInput accepts 2 params, each with default value of false
+ *      }
+ *
+ *      //arg0= forceRefill; default false, if any calls have this as true, then pass true
+ *      if(!_.toBool(allArgs[0]) && currentArgs.length>=1){
+ *          allArgs[0]=_.toBool(currentArgs[0]);
+ *      }
+ *
+ *      //arg1= DoNotFocus; default false, if any calls have this as true, then pass true
+ *      if(!_.toBool(allArgs[1]) && currentArgs.length>=2){
+ *          allArgs[1]=_.toBool(currentArgs[1]);
+ *      }
+ *      return allArgs;
+ *   });
+ */
+
+
+/**
+ * @description Debounces function with arguments and recudes the arguments from multiple calls using the combine function;
+ * @param {Function} func The function to debounce.
+ * @param {number} wait The number of milliseconds to delay.
+ * @param {Object} [options] The options object.
+ * @param {boolean} [options.leading=false] Specify execution on the leading edge of the timeout.
+ * @param {number} [options.maxWait] The maximum time `func` is allowed to be delayed before it's called.
+ * @param {boolean} [options.trailing=true] Specify execution on the trailing edge of the timeout.
+ * @param {Function(allArgs[],currentArgs[])-->[]} [combine] function that takes two params: allArgs (accumulated) and args from current call and returns  args to use when debounced function is called.
+ * @returns {Function} Returns the new debounced function.
+ */
+_.debounceReduce = function(func, wait, options, combine) {
+    var allargs,
+    context,
+    wrapper = _.debounce(function() {
+        var args = allargs;
+        allargs = undefined;
+        func.apply(context, args);
+    }, wait, options);
+    return function() {
+        context = this;
+        allargs = combine.apply(context, [allargs, Array.prototype.slice.call(arguments, 0)]);
+        wrapper();
+    };
+};
+
+/**
+ * string maniuplation functions copied from [underscore.string](http://epeli.github.io/underscore.string/) (only copied the ones I want to use)
+ */
+_.s = {
+    /**
+     * @returns {string} Converts passed string to camelcase;
+     * @param {string} str
+     */
+    camelize: function(str) {
+        return str.trim().replace(/[-_\s]+(.)?/g, function(match, c) {
+            return c.toUpperCase();
+        });
+    },
+
+    /**
+     * @returns {string} Capitalizes first letter of passed string;
+     * @param {string} str
+     */
+    capitalize: function(str) {
+        str = str === null ? '' : String(str);
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    },
+
+    /**
+     * @returns {string} Turns string into human reading format;
+     * @param {string} str
+     */
+    humanize: function(str) {
+        return _.s.capitalize(_.s.underscored(str).replace(/_id$/, '').replace(/_/g, ' '));
+    },
+
+    /**
+     * @returns {string} trims string and replace spaces with underscores;
+     * @param {string} str
+     */
+    underscored: function(str) {
+        return str.trim().replace(/([a-z\d])([A-Z]+)/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase();
+    }
 };
 
 /*
