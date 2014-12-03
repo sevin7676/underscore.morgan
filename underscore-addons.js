@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000 */
 
-/*     Version: 1.01
+/*     Version: 1.02
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -420,6 +420,19 @@ _.debounceReduce = function(func, wait, options, combine) {
         wrapper();
     };
 };
+
+/**
+ * @returns {bool} indicating if first argument equals any other arugments using strict equality comparison ('===')
+ * @param {*} value - value to check agaisnt all other arguments
+ * @param {n1...} values to compare to first value
+ */
+_.in = function(value, n1, n2, n3, n4){
+    for (var i = 1; i < arguments.length; i++) {
+        if (value === arguments[i]) return true;
+    }
+    return false;
+};
+
 
 /**
  * string maniuplation functions copied from [underscore.string](http://epeli.github.io/underscore.string/) (only copied the ones I want to use)
