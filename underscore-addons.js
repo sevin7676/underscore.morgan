@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000 */
 
-/*     Version: 1.02
+/*     Version: 1.05
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -178,10 +178,8 @@ _.toBool = function(obj, defaultOnFail) {
  */
 _.empty = function(obj) {
     try {
-        if (typeof obj === "undefined") {
-            return true;
-        }
-        if (obj === null) {
+        if(obj == null){
+            //note: == with null returns true if object is undefined OR null
             return true;
         }
         if (obj.toString().trim().length === 0) {
@@ -372,6 +370,21 @@ _.mergeDefault = function(defaultObject, parameter) {
 };
 
 /**
+ 
+ */
+
+
+/**
+ * @description Debounces function with arguments and recudes the arguments from multiple calls using the combine function;
+ * @param {Function} func The function to debounce.
+ * @param {number} wait The number of milliseconds to delay.
+ * @param {Object} [options] The options object.
+ * @param {boolean} [options.leading=false] Specify execution on the leading edge of the timeout.
+ * @param {number} [options.maxWait] The maximum time `func` is allowed to be delayed before it's called.
+ * @param {boolean} [options.trailing=true] Specify execution on the trailing edge of the timeout.
+ * @param {Function(allArgs[],currentArgs[])-->[]} [combine] function that takes two params: allArgs (accumulated) and args from current call and returns  args to use when debounced function is called.
+ * @returns {Function} Returns the new debounced function.
+ *
  * @link https://github.com/jashkenas/underscore/issues/310#issuecomment-2510502  *
  * @example for deboucneRecude (not in comments above func as its messy in tern)
  *
@@ -393,19 +406,6 @@ _.mergeDefault = function(defaultObject, parameter) {
  *      return allArgs;
  *   });
  */
-
-
-/**
- * @description Debounces function with arguments and recudes the arguments from multiple calls using the combine function;
- * @param {Function} func The function to debounce.
- * @param {number} wait The number of milliseconds to delay.
- * @param {Object} [options] The options object.
- * @param {boolean} [options.leading=false] Specify execution on the leading edge of the timeout.
- * @param {number} [options.maxWait] The maximum time `func` is allowed to be delayed before it's called.
- * @param {boolean} [options.trailing=true] Specify execution on the trailing edge of the timeout.
- * @param {Function(allArgs[],currentArgs[])-->[]} [combine] function that takes two params: allArgs (accumulated) and args from current call and returns  args to use when debounced function is called.
- * @returns {Function} Returns the new debounced function.
- */
 _.debounceReduce = function(func, wait, options, combine) {
     var allargs,
     context,
@@ -422,15 +422,36 @@ _.debounceReduce = function(func, wait, options, combine) {
 };
 
 /**
+ * @note: name would _.in but in is a keyword in javscript and this makes certain editor tools go crazy
  * @returns {bool} indicating if first argument equals any other arugments using strict equality comparison ('===')
  * @param {*} value - value to check agaisnt all other arguments
- * @param {n1...} values to compare to first value
+ * @param {...*} values to compare to first value
  */
-_.in = function(value, n1, n2, n3, n4){
+_.n = function(value, n1, n2, n3, n4){
     for (var i = 1; i < arguments.length; i++) {
         if (value === arguments[i]) return true;
     }
     return false;
+};
+
+/**
+ * @returns {string} with all regexp special characters escaped
+ * @param {string} str - string to escape
+ */
+_.escapeRegExp = function(str){
+    return str.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
+};
+
+/**
+ * @return {string} string with all instances of search replaced by replacment
+ * @param {string} str  - string to perform replacement on
+ * @param {search} search - string to search for
+ * @param {string} replacement - string to replace search
+ * @param {bool} [ignoreCase=false] - pass true to do case insensitive replace
+ *
+ */
+_.replaceAll = function(str, search, replacement, ignoreCase){
+    return str.replace(new RegExp(_.escapeRegExp(search), ignoreCase ? 'ig' : 'g'), replacement);
 };
 
 
@@ -471,7 +492,33 @@ _.s = {
      */
     underscored: function(str) {
         return str.trim().replace(/([a-z\d])([A-Z]+)/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase();
+    },
+    
+    /**
+     * @returns {string} html encoded string
+     * @param {string} str - string to encode
+     */
+    htmlEncode: function(str) {
+        var entityMap = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+        };
+        return String(str).replace(/[&<>]/g, function(s) {
+            if (!s) return '';
+            return entityMap[s];
+        });
+    },
+    
+    /**
+     * @returns {string} string with  html line breaks [<br/>] replaced with [\n]
+     * @param {string} str
+     */
+    htmlBreakToNewLine: function(str){
+        return str.replace(/< ?br ?\/? ?>/gi,'\n');
     }
+    
+    
 };
 
 /*
