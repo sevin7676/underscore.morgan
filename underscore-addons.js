@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000 */
 
-/*     Version: 1.05
+/*     Version: 1.06
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -178,7 +178,7 @@ _.toBool = function(obj, defaultOnFail) {
  */
 _.empty = function(obj) {
     try {
-        if(obj == null){
+        if (obj == null) {
             //note: == with null returns true if object is undefined OR null
             return true;
         }
@@ -347,24 +347,42 @@ _.distinct = function(list, propertyName) {
 };
 
 /**
- * Merge an unknown parameter with a deafult object to get a parameter vale (for optional default object parameters);
- * Uses lodashes deep merge function;
- * Catches and logs errors;
+ * Merge an unknown parameter with a deafult object to get a parameter value (for optional default object parameters).
+ * Uses lodashes deep merge function.
+ * Arrays are not valid parameters unless they are nested in an ojbect.
+ * Catches and logs errors.
  * @param {object} [defaultObject={}] - an object that contains default values for the parameter (does not have to be plain object)
  * @param {any} [parameter={}] - any value (nul, undefined, object, string, etc) to be merged with defaultObject, wont be merged unless it passes the isObject check (which is true for functions)
+ * @param {bool} [ignoreErr=false] - pass true to not throw errors (if false, errors are thrown after timeout so they dont break code)
  */
-_.mergeDefault = function(defaultObject, parameter) {
+_.mergeDefault = function(defaultObject, parameter, ignoreErr) {
     var r = {};
+    var err = '';
     try {
+        //check for arrays as they will pass isObject and we dont want that
+        if (_.isArray(defaultObject)) {
+            defaultObject = {};
+            err = 'defaultObject is an array, which is invalid';
+        }
+        if (_.isArray(parameter)) {
+            parameter = {};
+            err = 'parameter is an array, which is invalid';
+        }
+        
         //default object is required... but just in case lets return empty object instead of error
-        defaultObject = _.isObject(defaultObject) ? defaultObject : {};
+        //note: clone default so we don't modify it
+        defaultObject = _.isObject(defaultObject) ? _.cloneDeep(defaultObject, true) : {};
         parameter = _.isObject(parameter) ? parameter : {};
         r = _.merge(defaultObject, parameter);
+        
+        if (err) throw new Error('_.mergeDefault error: ' + err);
     }
     catch (ex) {
-        setTimeout(function() {
-            throw ex;
-        }, 0);
+        if(!ignoreErr){
+            setTimeout(function() {
+                throw ex;
+            }, 0);
+        }
     }
     return r;
 };
@@ -427,7 +445,7 @@ _.debounceReduce = function(func, wait, options, combine) {
  * @param {*} value - value to check agaisnt all other arguments
  * @param {...*} values to compare to first value
  */
-_.n = function(value, n1, n2, n3, n4){
+_.n = function(value, n1, n2, n3, n4) {
     for (var i = 1; i < arguments.length; i++) {
         if (value === arguments[i]) return true;
     }
@@ -438,7 +456,7 @@ _.n = function(value, n1, n2, n3, n4){
  * @returns {string} with all regexp special characters escaped
  * @param {string} str - string to escape
  */
-_.escapeRegExp = function(str){
+_.escapeRegExp = function(str) {
     return str.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
 };
 
@@ -450,7 +468,7 @@ _.escapeRegExp = function(str){
  * @param {bool} [ignoreCase=false] - pass true to do case insensitive replace
  *
  */
-_.replaceAll = function(str, search, replacement, ignoreCase){
+_.replaceAll = function(str, search, replacement, ignoreCase) {
     return str.replace(new RegExp(_.escapeRegExp(search), ignoreCase ? 'ig' : 'g'), replacement);
 };
 
@@ -493,32 +511,36 @@ _.s = {
     underscored: function(str) {
         return str.trim().replace(/([a-z\d])([A-Z]+)/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase();
     },
-    
+
     /**
      * @returns {string} html encoded string
+     * Only encodes < and > to corresponding character references (same as .NET HtmEncode)
      * @param {string} str - string to encode
      */
     htmlEncode: function(str) {
+        //http://stackoverflow.com/a/4318199/1571103
+        //note: decided to use character entity references instaed of numberic character references to mach .NET HtmlEncode method
         var entityMap = {
-            "&": "&amp;",
+            // "<": "&#60;",
+            // ">": "&#62;",
             "<": "&lt;",
             ">": "&gt;",
         };
-        return String(str).replace(/[&<>]/g, function(s) {
+        return String(str).replace(/[<>]/g, function(s) {
             if (!s) return '';
             return entityMap[s];
         });
     },
-    
+
     /**
      * @returns {string} string with  html line breaks [<br/>] replaced with [\n]
      * @param {string} str
      */
-    htmlBreakToNewLine: function(str){
-        return str.replace(/< ?br ?\/? ?>/gi,'\n');
+    htmlBreakToNewLine: function(str) {
+        return str.replace(/< ?br ?\/? ?>/gi, '\n');
     }
-    
-    
+
+
 };
 
 /*
