@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000 */
 
-/*     Version: 1.06
+/*!     Version: 1.13
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -13,9 +13,9 @@
                 Intentionally does not use _.mixin as its not needed due to simplicity of these functions and the fact that _.mixin doesnt work properly with tern
  */
 
-/** allow this work work as stand alone */
 (function() {
-    if (typeof(window) !== "undefined" && !window.hasOwnProperty("_")) {
+    /** allow this work work as stand alone (only some functions will work) */
+    if (typeof(window) !== "undefined" && window._ == null) {
         window._ = {};
     }
 }());
@@ -25,8 +25,12 @@
  * PlainObject will return JSON.stringify result;
  * @param {object} obj - object to attempt to convert
  * @param {string} [defaultOnFail=''] - value to return if the passed object fails to convert to string
+ * @param {bool} [detailed=false] - (use for debugging and logging) if true, the following values will return:
+ *      undefined: `[undefined]`
+ *      null: `[null]`
+ *      If this is true, an object that is stringified will check if the serialized result matches the original object. If it doesn't match, then this will prepend a string that tells us that functions were removed. WARNING: This comparison can be very slow. This is here because JSON.Stringify skips functions as they cant be serialized.
  */
-_.toStr = function(obj, defaultOnFail) {
+_.toStr = function(obj, defaultOnFail, detailed) {
     try {
         if (!defaultOnFail) {
             defaultOnFail = '';
@@ -38,15 +42,41 @@ _.toStr = function(obj, defaultOnFail) {
 
     var r = defaultOnFail;
     try {
-        if (_.isPlainObject(obj)) {
-            r = JSON.stringify(obj);
+        var stringify=function(value){
+            var tmp = JSON.stringify(obj);
+            if (detailed && !_.isEqual(JSON.parse(tmp), obj)) {
+                tmp = '[Functions Removed] ' + tmp;
+            }
+            return tmp;
+        };
+        var inner = function() {
+            if (_.isPlainObject(obj)) {
+               r = stringify(obj);
+            }
+            else {
+                r = obj.toString();
+                //fix object stringify
+                if (detailed && r.toLowerCase() == '[object object]') r = stringify(obj);
+            }
+        };
+        if (detailed) {
+            if (_.isUndefined(obj)) {
+                r = '[undefined]';
+            }
+            else if (_.isNull(obj)) {
+                r = '[null]';
+            }
+            inner();
         }
-        else {
-            r = obj.toString();
-        }
+        else inner();
     }
     catch (ex) {
         r = defaultOnFail;
+        if(detailed){
+            setTimeout(function() {
+                console.log('error in _.toStr(); \tobj:', obj, '\tError', ex);
+            }, 0);
+        }
     }
     return r;
 };
@@ -155,7 +185,7 @@ _.toBool = function(obj, defaultOnFail) {
         if (str === 'true' || str === '1') {
             return true;
         }
-        else if (str === 'false' || str === '1') {
+        else if (str === 'false' || str === '0') {
             return false;
         }
         return defaultOnFail;
@@ -341,9 +371,12 @@ _.isDate = function(obj) {
  * gets distinct values as an array from an array of objects (gets all distinct values for a single column from a datatable)
  * @param {[object]} list - array of objects with same properties (datatable)
  * @param {string} [propertyName] - name of the column to get distinct values for or blank if simple array
+ * @param {bool} noSort - pass true to not sort the result
  */
-_.distinct = function(list, propertyName) {
-    return _.chain(list).pluck(propertyName).sort().uniq(true).value();
+_.distinct = function(list, propertyName, noSort) {
+    var r = _.chain(list).pluck(propertyName);
+    if (noSort) return r.uniq(false).value();
+    return r.sort().uniq(true).value();
 };
 
 /**
@@ -353,44 +386,44 @@ _.distinct = function(list, propertyName) {
  * Catches and logs errors.
  * @param {object} [defaultObject={}] - an object that contains default values for the parameter (does not have to be plain object)
  * @param {any} [parameter={}] - any value (nul, undefined, object, string, etc) to be merged with defaultObject, wont be merged unless it passes the isObject check (which is true for functions)
- * @param {bool} [ignoreErr=false] - pass true to not throw errors (if false, errors are thrown after timeout so they dont break code)
+ * @param {bool} [fast=false] - pass true to do a shallow merge and prevent extra checks for invalid junk, can increase performance by 10x for large objects but ignores almost all validation.
+ *      DO NOT set this to true without testing as its behavior is less than desirable in many cases.
+ *      If false, this MIGHT modify the default object (not sure... do more testing)
+ *
  */
-_.mergeDefault = function(defaultObject, parameter, ignoreErr) {
+_.mergeDefault = function(defaultObject, parameter, fast) {
     var r = {};
     var err = '';
     try {
-        //check for arrays as they will pass isObject and we dont want that
-        if (_.isArray(defaultObject)) {
-            defaultObject = {};
-            err = 'defaultObject is an array, which is invalid';
+        if (fast) {
+            r = _.defaults(parameter || {}, defaultObject || {});
         }
-        if (_.isArray(parameter)) {
-            parameter = {};
-            err = 'parameter is an array, which is invalid';
+        else {
+            //check for arrays as they will pass isObject and we dont want that
+            if (_.isArray(defaultObject)) {
+                defaultObject = {};
+                err = 'defaultObject is an array, which is invalid';
+            }
+            if (_.isArray(parameter)) {
+                parameter = {};
+                err = 'parameter is an array, which is invalid';
+            }
+            //default object is required... but just in case lets return empty object instead of error
+            //note: clone default so we don't modify it
+            defaultObject = _.isObject(defaultObject) ? _.cloneDeep(defaultObject) : {};
+            parameter = _.isObject(parameter) ? parameter : {};
+            r = _.merge(defaultObject, parameter);
+
+            if (err) throw new Error('_.mergeDefault error: ' + err);
         }
-        
-        //default object is required... but just in case lets return empty object instead of error
-        //note: clone default so we don't modify it
-        defaultObject = _.isObject(defaultObject) ? _.cloneDeep(defaultObject, true) : {};
-        parameter = _.isObject(parameter) ? parameter : {};
-        r = _.merge(defaultObject, parameter);
-        
-        if (err) throw new Error('_.mergeDefault error: ' + err);
     }
     catch (ex) {
-        if(!ignoreErr){
-            setTimeout(function() {
-                throw ex;
-            }, 0);
-        }
+        setTimeout(function() {
+            throw ex;
+        }, 0);
     }
     return r;
 };
-
-/**
- 
- */
-
 
 /**
  * @description Debounces function with arguments and recudes the arguments from multiple calls using the combine function;
@@ -443,11 +476,29 @@ _.debounceReduce = function(func, wait, options, combine) {
  * @note: name would _.in but in is a keyword in javscript and this makes certain editor tools go crazy
  * @returns {bool} indicating if first argument equals any other arugments using strict equality comparison ('===')
  * @param {*} value - value to check agaisnt all other arguments
- * @param {...*} values to compare to first value
+ * @param {...*|array<*>} values to compare to first value or single array (only pass two params for array) which will be used to compare to first
  */
 _.n = function(value, n1, n2, n3, n4) {
-    for (var i = 1; i < arguments.length; i++) {
-        if (value === arguments[i]) return true;
+    //if 2nd arg is array, then use it for comparison
+    var possible = arguments[1];
+    if (_.isArray(possible)) {
+        //NOTE: this does not conflict with anything because this method wont work for comparing arrays, example:
+        // this evaulates to false: [1,2,3] === [1,2,3]
+        // because of this, we can assume that if the 2nd param is array then its the objects to compare
+        if (arguments.length > 2) {
+            console.log('_.n() error (next log); \targuments:', Array.prototype.slice.call(arguments));
+            setTimeout(function() {
+                throw new TypeError('_.n parameter error. 2nd parameter is array, which will be used for comparison, but more than 2 arguments are passed(these will be skipped). This this error is a warning that this method is likely being used improperly, however evaluation of this method is continuting.');
+            }, 0);
+        }
+    }
+    else {
+        //use all arguments after first
+        possible = Array.prototype.slice.call(arguments, 1);
+    }
+
+    for (var i = 0; i < possible.length; i++) {
+        if (value === possible[i]) return true;
     }
     return false;
 };
@@ -472,11 +523,313 @@ _.replaceAll = function(str, search, replacement, ignoreCase) {
     return str.replace(new RegExp(_.escapeRegExp(search), ignoreCase ? 'ig' : 'g'), replacement);
 };
 
+/**
+ * @returns {string} html string: name: value(tostring)
+ * @param {*} value - value to display
+ * @param {string} name - display name of the value
+ * @param {string} [separator=<div>] - value to add before result for separation.
+ *      Pass null or undefined to wrap in div, or pass special value 'span' to wrap in span, or any other characters (such as comma or line break)
+ * @param {int} [maxL=-1] - pass a positive int to trim the length of display value
+ * @param {bool} [skipIf=undefined] - string to compare to the value.toString(), if equal the result of this function will be an empty string.
+ *      Pass empty string to equal null or empty string.
+ *      Pass 'undefined' (as string) to skip if value is undefined
+ *      The comparison is case insensitive and ignores whitespace on ends of string
+ * @param {bool} [noHtml=false] - pass true to skip html formatting
+ */
+_.v = function(value, name, separator, maxL, skipIf, noHtml) {
+    try {
+        maxL = _.toInt(maxL);
+        var skipIfset = !_.isUndefined(skipIf);
+        if (separator == null) separator = '<div>';
+
+        //#region separator
+        var separatorEnd = ''; // /<?div>?/i.test(separator) ? '</div>' : (/<?span>?/i.test(separator) ? '</span>' : '');
+        if (/<?div>?/i.test(separator)) {
+            separator = '<div>';
+            separatorEnd = '</div>';
+        }
+        else if (/<?span>?/i.test(separator)) {
+            separator = '<span style="margin:0 20px;">';
+            separatorEnd = '</span>';
+        }
+        //#endregion
+
+
+        //#region value to string
+        if (value === null) {
+            if (skipIfset && skipIf === null) return '';
+            value = "[null]";
+        }
+        else if (value === undefined) {
+            if (skipIfset && skipIf === 'undefined') return '';
+            value = "[undefined]";
+        }
+        else if (_.isString(value)) {
+            if (skipIfset && skipIf === '') return '';
+            if (_.empty(value)) value = "[emptyString]";
+        }
+        else {
+            value = _.toStr(value, 'Failed to convert object to string', true);
+            if (skipIfset && _.s.equalsNoCase(value, skipIf)) return '';
+            if (!noHtml) {
+                var type = '';
+                if (_.isFunction(value)) type = '[Function]';
+                else if (_.isArguments(value)) type = '[Arguments]';
+                else if (_.isArray(value)) type = '[Array]';
+                else if (_.isError(value)) type = '[Error]';
+                else if (_.isDate(value)) type = '[Date]';
+                else if (_.isPlainObject(value)) type = '[PlainObject]';
+                else if (_.isObject(value)) type = '[Object]';
+                else type = '[Unknown(' + typeof value + ')]';
+                value = '<span style="color:grey;">' + type + '</span> ' + value;
+            }
+        }
+
+        //trim max length
+        if (maxL > 0 && value.length > maxL) value = value.substr(0, maxL - 2) + '..';
+
+        //special coloring for boolean
+        if (!noHtml) {
+            if (_.s.equalsNoCase(value, 'true')) value = '<span style="font-weight:bold; color:green;">true</span>';
+            else if (_.s.equalsNoCase(value, 'false')) value = '<span style="color:red;">false</span>';
+        }
+        //#endregion
+
+
+        if (noHtml) name = name + ': ';
+        else name = '<span style="color:#036CC2;">' + name + '</span>: '; //color name
+        return separator + name + value + separatorEnd;
+    }
+    catch (ex) {
+        setTimeout(function() {
+            throw ex;
+        }, 0);
+    }
+};
+
+/**
+ * @returns {function} passed function wrapped in double click handler that will modify the event argument to include a property that identifies if the event was fired from a double click.
+ * @param {function} func - event handler
+ * @param {object} [ops] - options
+ * @param {number} [ops.delay=300] - double click delay. Set to -1 to not use double click handling (double clicking will be ignored for middle and right click)
+ * @param {bool} [ops.getButtonIsJqueryNormalized=true] when true, this will assume that getButton function returns numbers based on jquery `which` normalization
+ * @param {string} [ops.clickInfoPropName=_clickInfo] - name of the property to add to arguments parameter that contains clickInfo class instance
+ * @param
+ * @param {function} [ops.getButton] - a function that accepts event parameter and returns clicked button number. Leave default to automatically parse standard jquery event.
+ *
+ * @note: this does not do binding! it only handles events. use the example below to handle
+ *
+ * @example
+ *
+ *      $('selector').on('mousedown', _.handleClick(function(e) {
+ *          //NOTE: this example is incomplete! for a jquery mousedown as it wont do what you want...
+ *          console.log('isDoubleClick= ' + e._clickInfo.isDouble);
+ *          console.log('button= ' + e._clickInfo.button);
+ *      }));
+ */
+_.handleClick = function(func, ops) {
+     /** @returns {string} left|middle|right */
+    var getButton=function(e){
+        return _.browser().mouseBtn(ops.getButton(e), ops.getButtonIsJqueryNormalized);
+    };
+    /**
+     * info about click event normalizd across browsers
+     * @param {object} e - event object
+     * @param {bool} isDouble
+     */
+    var clickInfo = function(e, isDouble) {
+        var sf = this;
+        /** @type {string} one of the following: left,right,middle  (or empty if not set) */
+        this.button = '';
+        /** @type {bool} is double click */
+        this.isDouble = _.toBool(isDouble);
+        /** @type {bool} is right click */
+        this.isRight = false;
+        /** @type {bool} is left click */
+        this.isLeft = false;
+        /** @type {bool} is middle click */
+        this.isMiddle = false;
+        /** @type {bool} will be true if: (isLeft && isDouble) || (isLeft && ctrlKey) || isMiddle */
+        this.newWindow = false;
+        /** original handleClick options */
+        this.ops = ops;
+        /** parse event */
+        (function() {
+            try {
+                sf.button = getButton(e);
+                sf.isRight = sf.button === 'right';
+                sf.isLeft = sf.button === 'left';
+                sf.isMiddle = sf.button === 'middle';
+                sf.newWindow = (sf.isLeft && sf.isDouble)  || (sf.isLeft && e.ctrlKey) || sf.isMiddle;
+            }
+            catch (ex) {
+                throw new Error('Failed to parse event data to get button;\n\n' + ex);
+            }
+        })();
+    };
+
+    if (!_.isFunction(func)) throw new TypeError('expected a function');
+
+    ops = _.mergeDefault({
+        delay: 300,
+        clickInfoPropName: '_clickInfo',
+        getButtonIsJqueryNormalized: true,
+        /**
+         * this default function parses normal and jquery event object and returns the 'which' object that is normalized.
+         * http://api.jquery.com/category/events/event-object/.
+         */
+        getButton: function(e) {
+            return e.which;
+        },
+    }, ops, true);
+
+    var clickCount = 0,
+        args = null,
+        timer = null;
+        
+
+    var inner = function() {
+        clearTimeout(timer);
+        var ci = new clickInfo(args[0], clickCount > 1); //will throw own descriptive error
+        try {
+            args[0][ops.clickInfoPropName] = ci;
+        }
+        catch (ex) {
+            throw new TypeError('_.handleClick Error: the event that triggered this did not pass the correct arugments. The first argument must be an object.\n\n' + ex);
+        }
+        clickCount = 0;
+        func.apply(this, args);
+    };
+
+    return function() {
+        var self = this; //`this` is the scope of the event handler, which is what we want to pass on
+        args = Array.prototype.slice.call(arguments); //(this works when arguments are not passed)
+        clickCount++;
+        
+        //if ops.delay <0, then invoke immediately (no double click handling), also no double for middle or right clicking
+        if (getButton(args[0]) === 'left' && ops.delay > 0 && clickCount === 1) {
+            timer = setTimeout(function() {
+                inner.apply(self);
+            }, ops.delay);
+        }
+        else inner.apply(self);
+    };
+};
+
+// _.alias =function(){
+//     /**
+//      * Alias a method while keeping the context correct, to allow for overwriting of target method.
+//      *
+//      * @param {String} name The name of the target method.
+//      * @return {Function} The aliased method
+//      * @api private
+//      */
+    
+//         return function aliasClosure() {
+//             return this[name].apply(this, arguments);
+//         };
+    
+// }
+
+/** *
+ * @returns {browserInfo}
+ * @note currently this only used to detect IE version
+ * @note This function is only executed once (on first call) for performance
+ */
+_.browser = _.once(function() {
+    var browserInfo = function() {
+        var sf = this;
+        var getIeVersion = function() {
+            if (!sf.isIE) return 999;
+            // IE7: "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+            // IE8: "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+            // IE9: "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+            // IE10:"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+            // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
+            if (ua.indexOf('msie') !== -1) return parseInt(ua.split('msie')[1]);
+            else return parseInt(ua.split('rv:')[1]);
+
+            if (isNaN(sf.ieVersion)) {
+                setTimeout(function() {
+                    throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
+                }, 1);
+                return 999; //set to max as a new version of IE likely wont be an issue
+            }
+        };
+        this.ua = navigator.userAgent.toLowerCase();
+        /** @type {bool} indicates if browser is IE */
+        this.isIE = this.ua.indexOf('trident') !== -1;
+        /** @type {int} version of IE or 999 if not IE, this allows for simply check for like: if(ieVersion<9) */
+        this.ieVersion = getIeVersion();
+        /**
+         * gets mouse button clicked from event (normalizes < ie9 which had silly buttons)
+         * @returns {string} one of the following: left,right,middle
+         * @param {int} number - event.button from click event that has button number
+         * @param {bool} [isJqueryNormalized=false] - if true, this will assume jquery alraedy normalized to http://api.jquery.com/event.which/
+         */
+        this.mouseBtn = function(num, isJqueryNormalized) {
+            num = parseInt(num);
+            if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
+
+            var r = {
+                Left: 'left',
+                Right: 'right',
+                Middle: 'middle'
+            };
+            if(isJqueryNormalized){
+                if (num === 1) return r.Left;
+                else if (num === 2) return r.Middle;
+                else if (num === 3) return r.Right;
+                else throw new Error('invalid number passed for mouse click event: ' + num);
+            }
+            else{
+                if (sf.ieVersion > 8) {
+                    if (num === 0) return r.Left;
+                    else if (num === 1) return r.Middle;
+                    else if (num === 2) return r.Right;
+                    else throw new Error('invalid number passed for mouse click event: ' + num);
+                }
+                //IE8 or earlier
+                if (num === 1) return r.Left;
+                else if (num === 4) return r.Middle;
+                else if (num === 2) return r.Right;
+                else throw new Error('invalid number passed for mouse click event: ' + num);
+            }
+        };
+    };
+    return new browserInfo();
+});
+
 
 /**
  * string maniuplation functions copied from [underscore.string](http://epeli.github.io/underscore.string/) (only copied the ones I want to use)
  */
 _.s = {
+    /**
+     * @returns {bool} true if pass strings are equal (case insensitive) after trimming end white space
+     * @param {string} str1
+     * @param {string} str2
+     * @param {bool} [noTrim=false] - pass true to compare strings without first trimming end white space
+     */
+    equalsNoCase: function(str1, str2, noTrim) {
+        str1 = str1.toLowerCase();
+        str2 = str2.toLowerCase();
+        if (!noTrim) {
+            str1 = str1.trim();
+            str2 = str2.trim();
+        }
+        return str1 === str2;
+    },
+
+    /**
+     * @returns {bool} true if pass strings are equal after trimming end white space
+     * @param {string} str1
+     * @param {string} str2
+     */
+    equals: function(str1, str2) {
+        return str1.trim() === str2.trim();
+    },
+
     /**
      * @returns {string} Converts passed string to camelcase;
      * @param {string} str
@@ -538,10 +891,19 @@ _.s = {
      */
     htmlBreakToNewLine: function(str) {
         return str.replace(/< ?br ?\/? ?>/gi, '\n');
+    },
+
+    /**
+     * @returns {string} passed string stripped of html tags
+     * @param {string} str
+     */
+    removeHtml: function(str) {
+        var tmp = document.createElement("DIV");
+        tmp.innerHTML = str;
+        return tmp.textContent || tmp.innerText || "";
     }
-
-
 };
+
 
 /*
 NOTE: this appears to be the proper way to add functions, but I don't want to do it this way because tern fails to recognize is properly
