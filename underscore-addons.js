@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000 */
 
-/*!     Version: 1.13
+/*!     Version: 1.14
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -716,90 +716,80 @@ _.handleClick = function(func, ops) {
     };
 };
 
-// _.alias =function(){
-//     /**
-//      * Alias a method while keeping the context correct, to allow for overwriting of target method.
-//      *
-//      * @param {String} name The name of the target method.
-//      * @return {Function} The aliased method
-//      * @api private
-//      */
-    
-//         return function aliasClosure() {
-//             return this[name].apply(this, arguments);
-//         };
-    
-// }
-
-/** *
- * @returns {browserInfo}
- * @note currently this only used to detect IE version
- * @note This function is only executed once (on first call) for performance
- */
-_.browser = _.once(function() {
-    var browserInfo = function() {
-        var sf = this;
-        var getIeVersion = function() {
-            if (!sf.isIE) return 999;
-            // IE7: "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-            // IE8: "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-            // IE9: "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-            // IE10:"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-            // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
-            if (ua.indexOf('msie') !== -1) return parseInt(ua.split('msie')[1]);
-            else return parseInt(ua.split('rv:')[1]);
-
-            if (isNaN(sf.ieVersion)) {
-                setTimeout(function() {
-                    throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
-                }, 1);
-                return 999; //set to max as a new version of IE likely wont be an issue
-            }
-        };
-        this.ua = navigator.userAgent.toLowerCase();
-        /** @type {bool} indicates if browser is IE */
-        this.isIE = this.ua.indexOf('trident') !== -1;
-        /** @type {int} version of IE or 999 if not IE, this allows for simply check for like: if(ieVersion<9) */
-        this.ieVersion = getIeVersion();
+(function(){
+    //this will error if lodash is not included
+    try{
         /**
-         * gets mouse button clicked from event (normalizes < ie9 which had silly buttons)
-         * @returns {string} one of the following: left,right,middle
-         * @param {int} number - event.button from click event that has button number
-         * @param {bool} [isJqueryNormalized=false] - if true, this will assume jquery alraedy normalized to http://api.jquery.com/event.which/
+         * @returns {browserInfo}
+         * @note currently this only used to detect IE version
+         * @note This function is only executed once (on first call) for performance
          */
-        this.mouseBtn = function(num, isJqueryNormalized) {
-            num = parseInt(num);
-            if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
-
-            var r = {
-                Left: 'left',
-                Right: 'right',
-                Middle: 'middle'
+        _.browser = _.once(function() {
+            var browserInfo = function() {
+                var sf = this;
+                var getIeVersion = function() {
+                    if (!sf.isIE) return 999;
+                    // IE7: "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE8: "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE9: "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE10:"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
+                    if (ua.indexOf('msie') !== -1) return parseInt(ua.split('msie')[1]);
+                    else return parseInt(ua.split('rv:')[1]);
+    
+                    if (isNaN(sf.ieVersion)) {
+                        setTimeout(function() {
+                            throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
+                        }, 1);
+                        return 999; //set to max as a new version of IE likely wont be an issue
+                    }
+                };
+                this.ua = navigator.userAgent.toLowerCase();
+                /** @type {bool} indicates if browser is IE */
+                this.isIE = this.ua.indexOf('trident') !== -1;
+                /** @type {int} version of IE or 999 if not IE, this allows for simply check for like: if(ieVersion<9) */
+                this.ieVersion = getIeVersion();
+                /**
+                 * gets mouse button clicked from event (normalizes < ie9 which had silly buttons)
+                 * @returns {string} one of the following: left,right,middle
+                 * @param {int} number - event.button from click event that has button number
+                 * @param {bool} [isJqueryNormalized=false] - if true, this will assume jquery alraedy normalized to http://api.jquery.com/event.which/
+                 */
+                this.mouseBtn = function(num, isJqueryNormalized) {
+                    num = parseInt(num);
+                    if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
+    
+                    var r = {
+                        Left: 'left',
+                        Right: 'right',
+                        Middle: 'middle'
+                    };
+                    if (isJqueryNormalized) {
+                        if (num === 1) return r.Left;
+                        else if (num === 2) return r.Middle;
+                        else if (num === 3) return r.Right;
+                        else throw new Error('invalid number passed for mouse click event: ' + num);
+                    }
+                    else {
+                        if (sf.ieVersion > 8) {
+                            if (num === 0) return r.Left;
+                            else if (num === 1) return r.Middle;
+                            else if (num === 2) return r.Right;
+                            else throw new Error('invalid number passed for mouse click event: ' + num);
+                        }
+                        //IE8 or earlier
+                        if (num === 1) return r.Left;
+                        else if (num === 4) return r.Middle;
+                        else if (num === 2) return r.Right;
+                        else throw new Error('invalid number passed for mouse click event: ' + num);
+                    }
+                };
             };
-            if(isJqueryNormalized){
-                if (num === 1) return r.Left;
-                else if (num === 2) return r.Middle;
-                else if (num === 3) return r.Right;
-                else throw new Error('invalid number passed for mouse click event: ' + num);
-            }
-            else{
-                if (sf.ieVersion > 8) {
-                    if (num === 0) return r.Left;
-                    else if (num === 1) return r.Middle;
-                    else if (num === 2) return r.Right;
-                    else throw new Error('invalid number passed for mouse click event: ' + num);
-                }
-                //IE8 or earlier
-                if (num === 1) return r.Left;
-                else if (num === 4) return r.Middle;
-                else if (num === 2) return r.Right;
-                else throw new Error('invalid number passed for mouse click event: ' + num);
-            }
-        };
-    };
-    return new browserInfo();
-});
-
+            return new browserInfo();
+        });
+    }
+    catch(e){}
+})();
 
 /**
  * string maniuplation functions copied from [underscore.string](http://epeli.github.io/underscore.string/) (only copied the ones I want to use)
