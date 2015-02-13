@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000 */
 
-/*!     Version: 1.14
+/*!     Version: 1.16
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -31,18 +31,10 @@
  *      If this is true, an object that is stringified will check if the serialized result matches the original object. If it doesn't match, then this will prepend a string that tells us that functions were removed. WARNING: This comparison can be very slow. This is here because JSON.Stringify skips functions as they cant be serialized.
  */
 _.toStr = function(obj, defaultOnFail, detailed) {
-    try {
-        if (!defaultOnFail) {
-            defaultOnFail = '';
-        }
-    }
-    catch (ex) {
-        defaultOnFail = '';
-    }
-
+    if (defaultOnFail === undefined) defaultOnFail = '';
     var r = defaultOnFail;
     try {
-        var stringify=function(value){
+        var stringify = function(value) {
             var tmp = JSON.stringify(obj);
             if (detailed && !_.isEqual(JSON.parse(tmp), obj)) {
                 tmp = '[Functions Removed] ' + tmp;
@@ -51,7 +43,7 @@ _.toStr = function(obj, defaultOnFail, detailed) {
         };
         var inner = function() {
             if (_.isPlainObject(obj)) {
-               r = stringify(obj);
+                r = stringify(obj);
             }
             else {
                 r = obj.toString();
@@ -72,7 +64,7 @@ _.toStr = function(obj, defaultOnFail, detailed) {
     }
     catch (ex) {
         r = defaultOnFail;
-        if(detailed){
+        if (detailed) {
             setTimeout(function() {
                 console.log('error in _.toStr(); \tobj:', obj, '\tError', ex);
             }, 0);
@@ -91,9 +83,7 @@ _.toStr = function(obj, defaultOnFail, detailed) {
  */
 _.toInt = function(obj, defaultOnFail, doNotAllowFormatted) {
     try {
-        if (typeof defaultOnFail == 'undefined') {
-            defaultOnFail = -1;
-        }
+        if (defaultOnFail === undefined) defaultOnFail = -1;
         else if (isNaN(parseInt(defaultOnFail, 10))) {
             defaultOnFail = -1;
         }
@@ -137,9 +127,7 @@ _.toInt = function(obj, defaultOnFail, doNotAllowFormatted) {
  */
 _.toDec = function(obj, defaultOnFail) {
     try {
-        if (typeof defaultOnFail == 'undefined') {
-            defaultOnFail = -1;
-        }
+        if (defaultOnFail === undefined) defaultOnFail = -1;
         else if (isNaN(parseFloat(defaultOnFail, 10))) {
             defaultOnFail = -1;
         }
@@ -388,7 +376,8 @@ _.distinct = function(list, propertyName, noSort) {
  * @param {any} [parameter={}] - any value (nul, undefined, object, string, etc) to be merged with defaultObject, wont be merged unless it passes the isObject check (which is true for functions)
  * @param {bool} [fast=false] - pass true to do a shallow merge and prevent extra checks for invalid junk, can increase performance by 10x for large objects but ignores almost all validation.
  *      DO NOT set this to true without testing as its behavior is less than desirable in many cases.
- *      If false, this MIGHT modify the default object (not sure... do more testing)
+ *      If false, this MIGHT modify the default object (not sure... do more testing).
+ *      If false this will not work properly if either object passed is an array (as arrays shouldnt be passed!)
  *
  */
 _.mergeDefault = function(defaultObject, parameter, fast) {
@@ -413,14 +402,16 @@ _.mergeDefault = function(defaultObject, parameter, fast) {
             defaultObject = _.isObject(defaultObject) ? _.cloneDeep(defaultObject) : {};
             parameter = _.isObject(parameter) ? parameter : {};
             r = _.merge(defaultObject, parameter);
-
-            if (err) throw new Error('_.mergeDefault error: ' + err);
+            
+            //log instead of throw so qunit tests will work
+            if (err) console.error('_.mergeDefault error: ' + err);
+            // if (err) throw new Error('_.mergeDefault error: ' + err);
         }
     }
     catch (ex) {
         setTimeout(function() {
             throw ex;
-        }, 0);
+        }, 1);
     }
     return r;
 };
@@ -535,9 +526,22 @@ _.replaceAll = function(str, search, replacement, ignoreCase) {
  *      Pass 'undefined' (as string) to skip if value is undefined
  *      The comparison is case insensitive and ignores whitespace on ends of string
  * @param {bool} [noHtml=false] - pass true to skip html formatting
+ * @param {object} [ops] - additional options
+ * @param {bool} [ops.noType=false] - pass true to prevent adding type data when not string or number
+ * @param {bool} [ops.allowBlank=false] - pass true allow returning empty string instead of '[null],[undefined],[emptyString]'
+ * @param {bool} [ops.colorBool=true] - pass false to prevent coloring value if its a boolean or 'True/False'
+ * @param {string} [ops.colon=': '] - the string to separate text from value (may want to pass ' = ')
+ * @param {string} [ops.valueCss=''] - extra css to wrap value in (will wrap value in span if set)
  */
-_.v = function(value, name, separator, maxL, skipIf, noHtml) {
+_.v = function(value, name, separator, maxL, skipIf, noHtml, ops) {
     try {
+        ops = _.mergeDefault({
+            noType: false,
+            allowBlank: false,
+            colorBool: true,
+            colon: ': ',
+            valueCss: '',
+        }, ops, true);
         maxL = _.toInt(maxL);
         var skipIfset = !_.isUndefined(skipIf);
         if (separator == null) separator = '<div>';
@@ -547,10 +551,16 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml) {
         if (/<?div>?/i.test(separator)) {
             separator = '<div>';
             separatorEnd = '</div>';
+            if (noHtml) separator = separatorEnd = ' ';
         }
         else if (/<?span>?/i.test(separator)) {
             separator = '<span style="margin:0 20px;">';
             separatorEnd = '</span>';
+            if (noHtml) separator = separatorEnd = ' ';
+        }
+        if (noHtml) {
+            separator = _.s.removeHtml(separator);
+            separatorEnd = _.s.removeHtml(separatorEnd);
         }
         //#endregion
 
@@ -559,19 +569,22 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml) {
         if (value === null) {
             if (skipIfset && skipIf === null) return '';
             value = "[null]";
+            if (ops.allowBlank) value = '';
         }
         else if (value === undefined) {
             if (skipIfset && skipIf === 'undefined') return '';
             value = "[undefined]";
+            if (ops.allowBlank) value = '';
         }
-        else if (_.isString(value)) {
+        else if (_.isString(value) || _.isNumber(value)) {
             if (skipIfset && skipIf === '') return '';
             if (_.empty(value)) value = "[emptyString]";
+            if (ops.allowBlank) value = '';
         }
         else {
             value = _.toStr(value, 'Failed to convert object to string', true);
             if (skipIfset && _.s.equalsNoCase(value, skipIf)) return '';
-            if (!noHtml) {
+            if (!noHtml && !ops.noType) {
                 var type = '';
                 if (_.isFunction(value)) type = '[Function]';
                 else if (_.isArguments(value)) type = '[Arguments]';
@@ -589,15 +602,21 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml) {
         if (maxL > 0 && value.length > maxL) value = value.substr(0, maxL - 2) + '..';
 
         //special coloring for boolean
-        if (!noHtml) {
+        if (!noHtml && ops.colorBool) {
             if (_.s.equalsNoCase(value, 'true')) value = '<span style="font-weight:bold; color:green;">true</span>';
             else if (_.s.equalsNoCase(value, 'false')) value = '<span style="color:red;">false</span>';
         }
         //#endregion
 
 
-        if (noHtml) name = name + ': ';
-        else name = '<span style="color:#036CC2;">' + name + '</span>: '; //color name
+        if (noHtml) name = name;
+        else name = '<span style="color:#036CC2;">' + name + '</span>'; //color name
+
+        if (!_.empty(value)) name += ops.colon;
+        else name += ' ';
+
+        if (!noHtml && ops.valueCss) value = '<span style="' + ops.valueCss + '">' + value + '</span>';
+
         return separator + name + value + separatorEnd;
     }
     catch (ex) {
@@ -628,8 +647,8 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml) {
  *      }));
  */
 _.handleClick = function(func, ops) {
-     /** @returns {string} left|middle|right */
-    var getButton=function(e){
+    /** @returns {string} left|middle|right */
+    var getButton = function(e) {
         return _.browser().mouseBtn(ops.getButton(e), ops.getButtonIsJqueryNormalized);
     };
     /**
@@ -653,14 +672,13 @@ _.handleClick = function(func, ops) {
         this.newWindow = false;
         /** original handleClick options */
         this.ops = ops;
-        /** parse event */
-        (function() {
+        /** parse event */ (function() {
             try {
                 sf.button = getButton(e);
                 sf.isRight = sf.button === 'right';
                 sf.isLeft = sf.button === 'left';
                 sf.isMiddle = sf.button === 'middle';
-                sf.newWindow = (sf.isLeft && sf.isDouble)  || (sf.isLeft && e.ctrlKey) || sf.isMiddle;
+                sf.newWindow = (sf.isLeft && sf.isDouble) || (sf.isLeft && e.ctrlKey) || sf.isMiddle;
             }
             catch (ex) {
                 throw new Error('Failed to parse event data to get button;\n\n' + ex);
@@ -686,7 +704,7 @@ _.handleClick = function(func, ops) {
     var clickCount = 0,
         args = null,
         timer = null;
-        
+
 
     var inner = function() {
         clearTimeout(timer);
@@ -705,7 +723,7 @@ _.handleClick = function(func, ops) {
         var self = this; //`this` is the scope of the event handler, which is what we want to pass on
         args = Array.prototype.slice.call(arguments); //(this works when arguments are not passed)
         clickCount++;
-        
+
         //if ops.delay <0, then invoke immediately (no double click handling), also no double for middle or right clicking
         if (getButton(args[0]) === 'left' && ops.delay > 0 && clickCount === 1) {
             timer = setTimeout(function() {
@@ -716,9 +734,48 @@ _.handleClick = function(func, ops) {
     };
 };
 
-(function(){
+/**
+ * @returns {bool} true if object has property
+ * @param {object} obj - object to check for property
+ * @param {string} key - key to check for
+ * @param {bool} [skipProto=false] - pass true to check that object has property directly defined without including if its defined on its prototype
+ * @param {bool} [skipUndefined=false] - pass true to return false if the key exists on the object but the value at the key is undefined
+ *
+ * @note there is no way to distinguish if a property in the prototype was defined directly on the object or mixed in
+ * @note errors are caught and logged after delay
+ */
+_.has = function(obj, key, skipProto, skipUndefined) {
+    var r = false;
+    try {
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwnProperty
+        // http://jsperf.com/hasownproperty-vs-in-vs-undefined/75
+        // performance (scaled to slowest performer, higher number is x times faster):
+        // 1. key in:           1
+        // 2. hasOwnProperty:   2.3
+        // 3. undefined check:  152
+        // checks below will check for undefined first when allowed because its so much faster
+        
+        if (skipProto) {
+            if (skipUndefined) r = typeof obj[key] !== 'undefined' && obj.hasOwnProperty(key);
+            else r= obj.hasOwnProperty(key);
+        }
+        else {
+            if (skipUndefined) r = typeof obj[key] !== 'undefined';
+            else r = typeof obj[key] !== 'undefined' || key in obj;
+        }
+    }
+    catch (ex) {
+        setTimeout(function() {
+            console.log('_.has Error, params:', obj, key);
+            throw ex;
+        });
+    }
+    return r;
+};
+
+(function() {
     //this will error if lodash is not included
-    try{
+    try {
         /**
          * @returns {browserInfo}
          * @note currently this only used to detect IE version
@@ -736,7 +793,7 @@ _.handleClick = function(func, ops) {
                     // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
                     if (ua.indexOf('msie') !== -1) return parseInt(ua.split('msie')[1]);
                     else return parseInt(ua.split('rv:')[1]);
-    
+
                     if (isNaN(sf.ieVersion)) {
                         setTimeout(function() {
                             throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
@@ -758,7 +815,7 @@ _.handleClick = function(func, ops) {
                 this.mouseBtn = function(num, isJqueryNormalized) {
                     num = parseInt(num);
                     if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
-    
+
                     var r = {
                         Left: 'left',
                         Right: 'right',
@@ -788,7 +845,7 @@ _.handleClick = function(func, ops) {
             return new browserInfo();
         });
     }
-    catch(e){}
+    catch (e) {}
 })();
 
 /**
@@ -802,8 +859,8 @@ _.s = {
      * @param {bool} [noTrim=false] - pass true to compare strings without first trimming end white space
      */
     equalsNoCase: function(str1, str2, noTrim) {
-        str1 = str1.toLowerCase();
-        str2 = str2.toLowerCase();
+        str1 = _.toStr(str1).toLowerCase();
+        str2 = _.toStr(str2).toLowerCase();
         if (!noTrim) {
             str1 = str1.trim();
             str2 = str2.trim();
