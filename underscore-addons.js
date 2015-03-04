@@ -820,7 +820,7 @@ _.cache = function(key, fn, ops, cb) {
     //use existing value if already cached
     if (!recheck && c[key] !== undefined) {
         if (async) {
-            cb([key]);
+            cb(c[key]);
             return;
         }
         return c[key];
