@@ -216,24 +216,18 @@ QUnit.test("_.cache", function(assert) {
     assert.equal(r, 1, 'normal');
 
     _.cache('2', function(cb) {
-        return 2;
-    }, null, function(result) {
-        assert.equal(result, 2, 'callback executed even though inner function was not async');
-    });
-
-    _.cache('3', function(cb) {
-        cb(3);
+        cb(2);
     }, null, function(result) {
         console.log('entered result');
-        assert.equal(result, 3, 'async');
+        assert.equal(result, 2, 'async');
     });
 
 
-    _.cache('key', function(cb) {
-        //do some async operation, call cb when done
-        cb('asyncResult');
-    }, {}, function(result) {
-        //result = 'asyncResult'
-    });
+    // _.cache('key', function(cb) {
+    //     //do some async operation, call cb when done
+    //     cb('asyncResult');
+    // }, {}, function(result) {
+    //     //result = 'asyncResult'
+    // });
 
 });

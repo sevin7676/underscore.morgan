@@ -780,13 +780,17 @@ _.has = function(obj, key, skipProto, skipUndefined) {
 
 /**
  * Executes function or gets value from cache.
+ * @returns {*} result of function directly and via callback if specified
  * @param {string} key - unique cache key
- * @param {function} fn - function to execute to get the value if it is not already cached
+ * @param {function} fn - function to execute to get the value if it is not already cached.
+ *      This functions first param should be a callback to execute with result value if its async.
+ * @param {object} [ops=undefined] - pass null, undefined, or {} to use default
  * @param {*} [ops.defaultOnFail=undefined] - default value to return if function execution results in error
  *      Note: if result is undefined, it won't be cached
  * @param {bool} [ops.recheck=false] - pass true to execute even if already cached (will update cache with new execution result)
- * @param {function} [cb] - callback to execute when done if async
- *      if this is specified, then the passed functions first param should be its callback function to execute when done that will receive the result
+ * @param {function} [cb] - callback to execute when done if.
+ *      If this is specified, then the result will be undefined and it must be obtained via the callback.
+ *      The passed functions first param should be its callback function to execute when done that will receive the result
  *
  * @browser only
  *
@@ -802,7 +806,7 @@ _.has = function(obj, key, skipProto, skipUndefined) {
  */
 _.cache = function(key, fn, ops, cb) {
     //get/setup global cache
-    var k = '_uscoreCache';
+    var k = '__usCache';
     if (window[k] === undefined) window[k] = {};
     var c = window[k];
 
@@ -810,28 +814,42 @@ _.cache = function(key, fn, ops, cb) {
     if (ops == null) ops = {};
     var defaultOnFail = ops.defaultOnFail,
         recheck = ops.recheck,
-        r = defaultOnFail,
-        asyncCbCalled = false;
+        async = typeof cb === 'function';
 
-    var asyncCb = function(result) {
-        asyncCbCalled = true;
-        r = result;
-    };
 
-    //return existing if already cached
-    if (!recheck && c[key] !== undefined) return c[key];
+    //use existing value if already cached
+    if (!recheck && c[key] !== undefined) {
+        if (async) {
+            cb([key]);
+            return;
+        }
+        return c[key];
+    }
 
-    //execute and cache result
+
+    //do async
+    if (async) {
+        try {
+            fn(function(result) {
+                c[key] = result;
+                cb(result);
+            });
+        }
+        catch (ex) {
+            c[key] = defaultOnFail;
+            cb(defaultOnFail);
+        }
+        return;
+    }
+
+    //do sync
     try {
-        var temp = fn(asyncCb);
-        if (!asyncCbCalled) r = temp;
+        c[key] = fn();
     }
     catch (ex) {
-        r = defaultOnFail;
+        c[key] = defaultOnFail;
     }
-    c[key] = r;
-    if (typeof cb === 'function') cb(r);
-    return r;
+    return c[key];
 };
 
 /**
