@@ -49,7 +49,7 @@ Object.equals = function(x, y) {
 function doEqual(name, actual, expected) {
 
     QUnit.test(name, function(assert) {
-        assert.ok(Object.equals(actual, expected), 'test: ' + name + '; ' + 'result:' + _.toStr(actual,'',true));
+        assert.ok(Object.equals(actual, expected), 'test: ' + name + '; ' + 'result:' + _.toStr(actual, '', true));
     });
     // var p = null;
     // var d = defaultObject();
@@ -134,77 +134,106 @@ tEnc('<a href="#">link</a>');
 
 
 QUnit.test("_.has", function(assert) {
-    var noProp='noPropertyAtThisKey';
-    var Class1= function(){
-        this.definedProp='defined';
-        this.nullProp=null;
+    var noProp = 'noPropertyAtThisKey';
+    var Class1 = function() {
+        this.definedProp = 'defined';
+        this.nullProp = null;
         this.undefinedProp = undefined;
     };
-    Class1.prototype.p_definedProp='defined';
-    Class1.prototype.p_nullProp=null;
-    Class1.prototype.p_undefinedProp=undefined;
-    
-    var Class2=function(){};
+    Class1.prototype.p_definedProp = 'defined';
+    Class1.prototype.p_nullProp = null;
+    Class1.prototype.p_undefinedProp = undefined;
+
+    var Class2 = function() {};
     Class2.prototype.inherited_definedProp = 'defined';
     Class2.prototype.inherited_nullProp = null;
     Class2.prototype.inherited_undefinedProp = undefined;
-    
-    for(var k in Class2.prototype){
+
+    for (var k in Class2.prototype) {
         Class1.prototype[k] = Class2.prototype[k];
     }
-    
+
     var c = new Class1();
-    console.log('Class1 Instance:',c);
-    
-    var t=function(key, expected, skipProto, skipUndefined ){
+    console.log('Class1 Instance:', c);
+
+    var t = function(key, expected, skipProto, skipUndefined) {
         var m = 'has key: `' + key + '` = ' + expected;
         if (skipProto) m += ' [skipProto]';
         if (skipUndefined) m += ' [skipUndefined]';
         assert.equal(_.has(c, key, skipProto, skipUndefined), expected, m);
     };
-    
+
     //defaultParams
     t('defaultParams', false);
     t('definedProp', true);
     t('nullProp', true);
     t('undefinedProp', true);
-    
+
     t('p_definedProp', true);
     t('p_nullProp', true);
     t('p_undefinedProp', true);
-    
+
     t('inherited_definedProp', true);
     t('inherited_nullProp', true);
     t('inherited_undefinedProp', true);
-    
+
     //skipProto
     t('defaultParams', false, true);
     t('definedProp', true, true);
     t('nullProp', true, true);
     t('undefinedProp', true, true);
-    
+
     t('p_definedProp', false, true);
     t('p_nullProp', false, true);
     t('p_undefinedProp', false, true);
-    
+
     t('inherited_definedProp', false, true);
     t('inherited_nullProp', false, true);
     t('inherited_undefinedProp', false, true);
-    
+
     //skipUndefined
     t('defaultParams', false, false, true);
     t('definedProp', true, false, true);
     t('nullProp', true, false, true);
     t('undefinedProp', false, false, true);
-    
+
     t('p_definedProp', true, false, true);
     t('p_nullProp', true, false, true);
     t('p_undefinedProp', false, false, true);
-    
+
     t('inherited_definedProp', true, false, true);
     t('inherited_nullProp', true, false, true);
     t('inherited_undefinedProp', false, false, true);
-    
-    
+
+
 });
 
+
+QUnit.test("_.cache", function(assert) {
+    var r = _.cache('1', function() {
+        return 1;
+    });
+    assert.equal(r, 1, 'normal');
+
+    _.cache('2', function(cb) {
+        return 2;
+    }, null, function(result) {
+        assert.equal(result, 2, 'callback executed even though inner function was not async');
+    });
+
+    _.cache('3', function(cb) {
+        cb(3);
+    }, null, function(result) {
+        console.log('entered result');
+        assert.equal(result, 3, 'async');
+    });
+
+
+    _.cache('key', function(cb) {
+        //do some async operation, call cb when done
+        cb('asyncResult');
+    }, {}, function(result) {
+        //result = 'asyncResult'
+    });
+
+});

@@ -1,8 +1,8 @@
 /// <reference path="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/2.4.1/lodash.js" />
 
-/*jshint maxerr:10000 */
+/*jshint maxerr:10000, eqnull:true */
 
-/*!     Version: 1.16
+/*!     Version: 1.17
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -381,6 +381,8 @@ _.distinct = function(list, propertyName, noSort) {
  *
  */
 _.mergeDefault = function(defaultObject, parameter, fast) {
+    //uncomment sw to benchmark (requires standardScripts.js)
+    /*var sw = new apTimer(true);*/
     var r = {};
     var err = '';
     try {
@@ -402,7 +404,7 @@ _.mergeDefault = function(defaultObject, parameter, fast) {
             defaultObject = _.isObject(defaultObject) ? _.cloneDeep(defaultObject) : {};
             parameter = _.isObject(parameter) ? parameter : {};
             r = _.merge(defaultObject, parameter);
-            
+
             //log instead of throw so qunit tests will work
             if (err) console.error('_.mergeDefault error: ' + err);
             // if (err) throw new Error('_.mergeDefault error: ' + err);
@@ -413,6 +415,8 @@ _.mergeDefault = function(defaultObject, parameter, fast) {
             throw ex;
         }, 1);
     }
+    /*sw.stop();
+    sw.logTable('_.mergeDefault; fast:' + _.toBool(fast), _.toStr(r, 'failedToStringify', true));*/
     return r;
 };
 
@@ -576,7 +580,7 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml, ops) {
             value = "[undefined]";
             if (ops.allowBlank) value = '';
         }
-        else if (_.isString(value) || _.isNumber(value)) {
+        else if (_.isString(value) || _.isNumber(value) || _.isBoolean(value)) {
             if (skipIfset && skipIf === '') return '';
             if (_.empty(value)) value = "[emptyString]";
             if (ops.allowBlank) value = '';
@@ -672,7 +676,8 @@ _.handleClick = function(func, ops) {
         this.newWindow = false;
         /** original handleClick options */
         this.ops = ops;
-        /** parse event */ (function() {
+        /** parse event */
+        (function() {
             try {
                 sf.button = getButton(e);
                 sf.isRight = sf.button === 'right';
@@ -754,10 +759,10 @@ _.has = function(obj, key, skipProto, skipUndefined) {
         // 2. hasOwnProperty:   2.3
         // 3. undefined check:  152
         // checks below will check for undefined first when allowed because its so much faster
-        
+
         if (skipProto) {
             if (skipUndefined) r = typeof obj[key] !== 'undefined' && obj.hasOwnProperty(key);
-            else r= obj.hasOwnProperty(key);
+            else r = obj.hasOwnProperty(key);
         }
         else {
             if (skipUndefined) r = typeof obj[key] !== 'undefined';
@@ -773,80 +778,61 @@ _.has = function(obj, key, skipProto, skipUndefined) {
     return r;
 };
 
-(function() {
-    //this will error if lodash is not included
+/**
+ * Executes function or gets value from cache.
+ * @param {string} key - unique cache key
+ * @param {function} fn - function to execute to get the value if it is not already cached
+ * @param {*} [ops.defaultOnFail=undefined] - default value to return if function execution results in error
+ *      Note: if result is undefined, it won't be cached
+ * @param {bool} [ops.recheck=false] - pass true to execute even if already cached (will update cache with new execution result)
+ * @param {function} [cb] - callback to execute when done if async
+ *      if this is specified, then the passed functions first param should be its callback function to execute when done that will receive the result
+ *
+ * @browser only
+ *
+ * @example (async)
+ *
+ *   _.cache('key', function(cb) {
+ *       //do some async operation, call cb when done
+ *       cb('asyncResult');
+ *   }, {}, function(result) {
+ *       //result = 'asyncResult'
+ *   });
+ *
+ */
+_.cache = function(key, fn, ops, cb) {
+    //get/setup global cache
+    var k = '_uscoreCache';
+    if (window[k] === undefined) window[k] = {};
+    var c = window[k];
+
+    //set params (note: not using _.mergeDefault for performance)
+    if (ops == null) ops = {};
+    var defaultOnFail = ops.defaultOnFail,
+        recheck = ops.recheck,
+        r = defaultOnFail,
+        asyncCbCalled = false;
+
+    var asyncCb = function(result) {
+        asyncCbCalled = true;
+        r = result;
+    };
+
+    //return existing if already cached
+    if (!recheck && c[key] !== undefined) return c[key];
+
+    //execute and cache result
     try {
-        /**
-         * @returns {browserInfo}
-         * @note currently this only used to detect IE version
-         * @note This function is only executed once (on first call) for performance
-         */
-        _.browser = _.once(function() {
-            var browserInfo = function() {
-                var sf = this;
-                var getIeVersion = function() {
-                    if (!sf.isIE) return 999;
-                    // IE7: "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                    // IE8: "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                    // IE9: "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                    // IE10:"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                    // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
-                    if (ua.indexOf('msie') !== -1) return parseInt(ua.split('msie')[1]);
-                    else return parseInt(ua.split('rv:')[1]);
-
-                    if (isNaN(sf.ieVersion)) {
-                        setTimeout(function() {
-                            throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
-                        }, 1);
-                        return 999; //set to max as a new version of IE likely wont be an issue
-                    }
-                };
-                this.ua = navigator.userAgent.toLowerCase();
-                /** @type {bool} indicates if browser is IE */
-                this.isIE = this.ua.indexOf('trident') !== -1;
-                /** @type {int} version of IE or 999 if not IE, this allows for simply check for like: if(ieVersion<9) */
-                this.ieVersion = getIeVersion();
-                /**
-                 * gets mouse button clicked from event (normalizes < ie9 which had silly buttons)
-                 * @returns {string} one of the following: left,right,middle
-                 * @param {int} number - event.button from click event that has button number
-                 * @param {bool} [isJqueryNormalized=false] - if true, this will assume jquery alraedy normalized to http://api.jquery.com/event.which/
-                 */
-                this.mouseBtn = function(num, isJqueryNormalized) {
-                    num = parseInt(num);
-                    if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
-
-                    var r = {
-                        Left: 'left',
-                        Right: 'right',
-                        Middle: 'middle'
-                    };
-                    if (isJqueryNormalized) {
-                        if (num === 1) return r.Left;
-                        else if (num === 2) return r.Middle;
-                        else if (num === 3) return r.Right;
-                        else throw new Error('invalid number passed for mouse click event: ' + num);
-                    }
-                    else {
-                        if (sf.ieVersion > 8) {
-                            if (num === 0) return r.Left;
-                            else if (num === 1) return r.Middle;
-                            else if (num === 2) return r.Right;
-                            else throw new Error('invalid number passed for mouse click event: ' + num);
-                        }
-                        //IE8 or earlier
-                        if (num === 1) return r.Left;
-                        else if (num === 4) return r.Middle;
-                        else if (num === 2) return r.Right;
-                        else throw new Error('invalid number passed for mouse click event: ' + num);
-                    }
-                };
-            };
-            return new browserInfo();
-        });
+        var temp = fn(asyncCb);
+        if (!asyncCbCalled) r = temp;
     }
-    catch (e) {}
-})();
+    catch (ex) {
+        r = defaultOnFail;
+    }
+    c[key] = r;
+    if (typeof cb === 'function') cb(r);
+    return r;
+};
 
 /**
  * string maniuplation functions copied from [underscore.string](http://epeli.github.io/underscore.string/) (only copied the ones I want to use)
@@ -916,17 +902,24 @@ _.s = {
      * @returns {string} html encoded string
      * Only encodes < and > to corresponding character references (same as .NET HtmEncode)
      * @param {string} str - string to encode
+     * @param {bool} [singleQuote=false] - pass ture to encode single quote as &quot;
      */
-    htmlEncode: function(str) {
+    htmlEncode: function(str, singleQuote) {
         //http://stackoverflow.com/a/4318199/1571103
-        //note: decided to use character entity references instaed of numberic character references to mach .NET HtmlEncode method
+        //note: decided to use character entity references instead of numberic character references to mach .NET HtmlEncode method
         var entityMap = {
             // "<": "&#60;",
             // ">": "&#62;",
             "<": "&lt;",
             ">": "&gt;",
         };
-        return String(str).replace(/[<>]/g, function(s) {
+        var re = /[<>]/g;
+        if (singleQuote) {
+            entityMap["'"] = "&#39;";
+            re = /[<>']/g;
+        }
+
+        return String(str).replace(re, function(s) {
             if (!s) return '';
             return entityMap[s];
         });
@@ -950,6 +943,92 @@ _.s = {
         return tmp.textContent || tmp.innerText || "";
     }
 };
+
+(function() {
+    //this will error if lodash is not included
+    try {
+        var cache;
+        var browserInfo = function() {
+            var sf = this;
+            var getIeVersion = function() {
+                if (!sf.isIE) return 999;
+                // IE7: "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                // IE8: "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                // IE9: "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                // IE10:"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
+                if (sf.ua.indexOf('msie') !== -1) return parseInt(sf.ua.split('msie')[1]);
+                else return parseInt(sf.ua.split('rv:')[1]);
+
+                if (isNaN(sf.ieVersion)) {
+                    setTimeout(function() {
+                        throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
+                    }, 1);
+                    return 999; //set to max as a new version of IE likely wont be an issue
+                }
+            };
+            this.ua = navigator.userAgent.toLowerCase();
+            /** @type {bool} indicates if browser is IE */
+            this.isIE = this.ua.indexOf('trident') !== -1;
+            /** @type {int} version of IE or 999 if not IE, this allows for simply check for like: if(ieVersion<9) */
+            this.ieVersion = getIeVersion();
+            /**
+             * gets mouse button clicked from event (normalizes < ie9 which had silly buttons)
+             * @returns {string} one of the following: left,right,middle
+             * @param {int} number - event.button from click event that has button number
+             * @param {bool} [isJqueryNormalized=false] - if true, this will assume jquery alraedy normalized to http://api.jquery.com/event.which/
+             */
+            this.mouseBtn = function(num, isJqueryNormalized) {
+                num = parseInt(num);
+                if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
+
+                var r = {
+                    Left: 'left',
+                    Right: 'right',
+                    Middle: 'middle'
+                };
+                if (isJqueryNormalized) {
+                    if (num === 1) return r.Left;
+                    else if (num === 2) return r.Middle;
+                    else if (num === 3) return r.Right;
+                    else if (num === 0) {
+                        //TODO: this is here becuase touch screens appear to result in 0, but i'm not completely sure if this is meant to be the case and if it is consistent
+                        return r.Left;
+                    }
+                    else throw new Error('invalid number passed for mouse click event: ' + num);
+                }
+                else {
+                    if (sf.ieVersion > 8) {
+                        if (num === 0) return r.Left;
+                        else if (num === 1) return r.Middle;
+                        else if (num === 2) return r.Right;
+                        else throw new Error('invalid number passed for mouse click event: ' + num);
+                    }
+                    //IE8 or earlier
+                    if (num === 1) return r.Left;
+                    else if (num === 4) return r.Middle;
+                    else if (num === 2) return r.Right;
+                    else throw new Error('invalid number passed for mouse click event: ' + num);
+                }
+            };
+        };
+        /**
+         * @returns {browserInfo}
+         * @note currently this only used to detect IE version
+         * @note This function is only executed once (on first call) for performance
+         */
+        _.browser = function() {
+            if (!cache) cache = new browserInfo();
+            return cache;
+        };
+    }
+    catch (ex) {
+        setTimeout(function() {
+            console.log('error in _.browser');
+            throw ex;
+        }, 0);
+    }
+})();
 
 
 /*
