@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000, eqnull:true */
 
-/*!     Version: 1.17
+/*!     Version: 1.25
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -19,6 +19,8 @@
         window._ = {};
     }
 }());
+
+
 /**
  * Returns an string by attempting to cast passed object as string;
  * Undefined object will return default on fail;
@@ -58,7 +60,7 @@ _.toStr = function(obj, defaultOnFail, detailed) {
             else if (_.isNull(obj)) {
                 r = '[null]';
             }
-            inner();
+            else inner();
         }
         else inner();
     }
@@ -118,6 +120,17 @@ _.toInt = function(obj, defaultOnFail, doNotAllowFormatted) {
     }
     catch (ex) {}
     return defaultOnFail;
+};
+
+/**
+ * @returns {bool} true if passed number can be converted to int
+ * @param {object} obj - object to attempt to convert
+ * @param {int} [defaultOnFail=-1] - value to return if the passed object fails to convert to int
+ * @param {bool} [doNotAllowFormatted=false] - pass true to prevent parsing formatted which removes dollar symbol, commas, and assumes negative for parenthesis
+ */
+_.isInt = function(obj, doNotAllowFormatted) {
+    var defaultOnFail = -73737373; //random number that is insanely unlikely to get passed to this function
+    return _.toInt(obj, defaultOnFail, doNotAllowFormatted) != defaultOnFail;
 };
 
 /**
@@ -284,7 +297,7 @@ _.isValidID = function(obj, FirstPossibleNegativeKey, FirstPossiblePositiveKey, 
     catch (ex) {
         return false;
     }
-    FirstPossibleNegativeKey = _.toInt(FirstPossibleNegativeKey, - 10);
+    FirstPossibleNegativeKey = _.toInt(FirstPossibleNegativeKey, -10);
     FirstPossiblePositiveKey = _.toInt(FirstPossiblePositiveKey, 1);
     if (DoNotAllowNegativeKey !== true) {
         if (r <= FirstPossibleNegativeKey || r >= FirstPossiblePositiveKey) {
@@ -356,15 +369,58 @@ _.isDate = function(obj) {
 }());
 
 /**
- * gets distinct values as an array from an array of objects (gets all distinct values for a single column from a datatable)
+ * gets distinct values as an array from an array of objects
+ * (gets all distinct values for a single column from a datatable)
  * @param {[object]} list - array of objects with same properties (datatable)
- * @param {string} [propertyName] - name of the column to get distinct values for or blank if simple array
- * @param {bool} noSort - pass true to not sort the result
+ * @param {string|array<string>} [propertyName] - name(s) of the column(s) to get distinct values for or blank if simple array
+ * @param {bool} [ops.noSort=false] - pass true to not sort the result (result is never sorted if using multiple properties)
+ * @param {array<string>} [ops.nameMap] - array (must be same length as propertyNames) of new names for properties.
+ *      This allows mapping at same time as distinct.
+ *      (Only works when propertyName is an array)
  */
-_.distinct = function(list, propertyName, noSort) {
-    var r = _.chain(list).pluck(propertyName);
-    if (noSort) return r.uniq(false).value();
-    return r.sort().uniq(true).value();
+_.distinct = function(list, propertyName, ops) {
+    // var sw = new apTimer(true);//uncomment sw to benchmark (requires standardScripts.js)
+    var r = [];
+
+    //legacy: 3rd param used to be noSort
+    var noSort;
+    if (ops === true) {
+        noSort = true;
+        ops = null;
+    }
+    ops = ops || {};
+    ops.noSort = ops.noSort || noSort || false;
+
+    if (_.isArray(propertyName)) {
+        var added = {},
+            mapNames = false;
+
+        if (_.isArray(ops.nameMap)) {
+            if (ops.nameMap.length != propertyName.length) throw new TypeError('nameMap passed but it is not the same length as the propertyNames array; propertyNames: ' + propertyName.toString() + '; nameMap:' + ops.nameMap.toString());
+            mapNames = true;
+        }
+
+        _.each(list, function(v, i, arr) {
+            var thisRowMapped = {};
+            _.each(propertyName, function(x, n) {
+                thisRowMapped[mapNames ? ops.nameMap[n] : x] = v[x];
+            });
+
+            var key = JSON.stringify(thisRowMapped);
+            if (key in added) return;
+
+            added[key] = true;
+            r.push(thisRowMapped);
+        });
+    }
+    else {
+        r = _.chain(list).pluck(propertyName);
+        if (ops.noSort) r = r.uniq(false).value();
+        else r = r.sort().uniq(true).value();
+    }
+
+    // sw.logTable('_.distinct', (propertyName ? 'propertyName(s): ' + propertyName.toString() : '(no property)'), 'list length: ' + list.length, 'list columns: ' + _.keys(list[0]).length);
+    return r;
 };
 
 /**
@@ -454,17 +510,92 @@ _.mergeDefault = function(defaultObject, parameter, fast) {
  */
 _.debounceReduce = function(func, wait, options, combine) {
     var allargs,
-    context,
-    wrapper = _.debounce(function() {
-        var args = allargs;
-        allargs = undefined;
-        func.apply(context, args);
-    }, wait, options);
+        context,
+        wrapper = _.debounce(function() {
+            var args = allargs;
+            allargs = undefined;
+            func.apply(context, args);
+        }, wait, options);
     return function() {
         context = this;
         allargs = combine.apply(context, [allargs, Array.prototype.slice.call(arguments, 0)]);
         wrapper();
     };
+};
+
+/**
+ * Debounce Advanced (better than built in from lodash)
+ * Debounces a function for the passed object or does it globally
+ * @param {object} obj - pass null or an object that will be used for the scope of debouncing at the passed key
+ * @param {string} key - a key unique to current instance for the fucntion being debounced
+ * @param {function} fn - function to debounce
+ * @param {number} delay - debouce delay in milliseconds.
+ *      Pass -1 or a non-numeric value to execute function immediately (no debounce, not async)
+ * @param {object} [ops]
+ * @param {bool} [ops.debug=false] - pass true to log debug info
+ * @param {string|function} [ops.debugId] - string to log for debugging to help identify caller.
+ *      If function, then calling function should return string
+ * @note make sure not to use `this` in inner function (obvious)
+ *
+ * @example
+ *
+ * //debounce using object for scope
+ * this.something = function() {
+ *     _.debounceA(this, 'something', 10, inner);
+ *
+ *     function inner() {}
+ * };
+ *
+ *
+ * @example
+ *
+ * //debounce using global scope - only second call will get executed
+ * _.debounceA(null, 'something', 10, function() { console.log('test 1'); });
+ * _.debounceA(null, 'something', 10, function() { console.log('test 2'); });
+ *
+ */
+_.debounceA = function(obj, key, delay, fn, ops) {
+    //get/setup global debounce object
+    var k = '__usDebounce';
+    if (window[k] === undefined) window[k] = {};
+
+    //use global or passed object
+    var useGlobal = obj == null;
+    if (!useGlobal) obj[k] = obj[k] || {};
+
+    ops = ops || {};
+    delay = parseInt(delay, 10);
+
+    //if delay is not a number, or its -1, then execute immediately
+    if (isNaN(delay) || delay === -1) {
+        dbg('executing immediately', 'color:orange; font-weight:bold;');
+        fn();
+        return;
+    }
+
+    var parent = useGlobal ? window[k] : obj[k];
+    clearTimeout(parent[key]);
+    dbg('called', 'color:gray;');
+
+    parent[key] = setTimeout(function() {
+        dbg('executing', 'color:green; font-weight:bold;');
+        fn();
+    }, delay);
+
+    function dbg(msg, css) {
+        if (!ops.debug) return;
+        msg = 'apDebounce ' + msg + ' \t delay: ' + delay + ' \t key: ' + key;
+        if (ops.debugId) {
+            if (typeof ops.debugId === 'function') ops.debugId = ops.debugId();
+            msg += '\t id: ' + ops.debugId;
+        }
+        if (css) {
+            msg = '%c ' + msg;
+            console.log(msg, css);
+            return;
+        }
+        console.log(msg);
+    }
 };
 
 /**
@@ -568,7 +699,6 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml, ops) {
         }
         //#endregion
 
-
         //#region value to string
         if (value === null) {
             if (skipIfset && skipIf === null) return '';
@@ -611,7 +741,6 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml, ops) {
             else if (_.s.equalsNoCase(value, 'false')) value = '<span style="color:red;">false</span>';
         }
         //#endregion
-
 
         if (noHtml) name = name;
         else name = '<span style="color:#036CC2;">' + name + '</span>'; //color name
@@ -710,7 +839,6 @@ _.handleClick = function(func, ops) {
         args = null,
         timer = null;
 
-
     var inner = function() {
         clearTimeout(timer);
         var ci = new clickInfo(args[0], clickCount > 1); //will throw own descriptive error
@@ -788,7 +916,7 @@ _.has = function(obj, key, skipProto, skipUndefined) {
  * @param {*} [ops.defaultOnFail=undefined] - default value to return if function execution results in error
  *      Note: if result is undefined, it won't be cached
  * @param {bool} [ops.recheck=false] - pass true to execute even if already cached (will update cache with new execution result)
- * @param {function} [cb] - callback to execute when done if.
+ * @param {function} [cb] - callback to execute when done.
  *      If this is specified, then the result will be undefined and it must be obtained via the callback.
  *      The passed functions first param should be its callback function to execute when done that will receive the result
  *
@@ -816,7 +944,6 @@ _.cache = function(key, fn, ops, cb) {
         recheck = ops.recheck,
         async = typeof cb === 'function';
 
-
     //use existing value if already cached
     if (!recheck && c[key] !== undefined) {
         if (async) {
@@ -825,7 +952,6 @@ _.cache = function(key, fn, ops, cb) {
         }
         return c[key];
     }
-
 
     //do async
     if (async) {
@@ -853,201 +979,426 @@ _.cache = function(key, fn, ops, cb) {
 };
 
 /**
- * string maniuplation functions copied from [underscore.string](http://epeli.github.io/underscore.string/) (only copied the ones I want to use)
+ * deletes cached data at given key
+ * @param {string} key - unique cache key
  */
-_.s = {
-    /**
-     * @returns {bool} true if pass strings are equal (case insensitive) after trimming end white space
-     * @param {string} str1
-     * @param {string} str2
-     * @param {bool} [noTrim=false] - pass true to compare strings without first trimming end white space
-     */
-    equalsNoCase: function(str1, str2, noTrim) {
-        str1 = _.toStr(str1).toLowerCase();
-        str2 = _.toStr(str2).toLowerCase();
-        if (!noTrim) {
-            str1 = str1.trim();
-            str2 = str2.trim();
-        }
-        return str1 === str2;
-    },
+_.cacheDelete = function(key) {
+    //get/setup global cache
+    var k = '__usCache';
+    if (window[k] === undefined) window[k] = {};
+    var c = window[k];
+
+    delete k[key];
+};
+
+/**
+ * @returns {bool} true if an object is present at given cache key (objects value must not ben undefined)
+ * @param {string} key - unique cache key
+ */
+_.cacheExists = function(key) {
+    //get/setup global cache
+    var k = '__usCache';
+    if (window[k] === undefined) window[k] = {};
+    var c = window[k];
+
+    return c[key] !== undefined;
+};
+
+/**
+ * @returns {int} number of times count has been called for passed key (first call for the key returns 1)
+ * @param {string} key - key to check for
+ * @param {int} [ops.clearAfter=-1] - duration in milliseconds to clear the count for this key or -1 to not clear (must be > 0 to clear)
+ *      note: this doesn't set a timer to clear, instead the count is cleared on the next call if the clearAfter time has been exceeded.
+ *            this allows for better performance as clearing is only done as needed
+ *      note: clearAfter is only set on the FIRST call, so subsequent calls with the same key wont update clearAfter (TODO: can change this if needed with an option)
+ */
+_.count = function(key, ops) {
+    var k = '__usCountCache';
+    if (window[k] === undefined) window[k] = {};
+    var c = window[k];
+
+    //set params (note: not using _.mergeDefault for performance)
+    if (ops == null) ops = {};
+    var clearAfter = _.toInt(ops.clearAfter);
+
+
+    if (clearAfter > 0) {
+        var d = new Date();
+        d.setMilliseconds(d.getMilliseconds() + clearAfter);
+        clearAfter = d.getTime();
+    }
+
 
     /**
-     * @returns {bool} true if pass strings are equal after trimming end white space
-     * @param {string} str1
-     * @param {string} str2
+     * Inserts cache w/ count 1 and returns 1.
+     * Call when inserting new cache or resetting due to clear after being surpassed
      */
-    equals: function(str1, str2) {
-        return str1.trim() === str2.trim();
-    },
-
-    /**
-     * @returns {string} Converts passed string to camelcase;
-     * @param {string} str
-     */
-    camelize: function(str) {
-        return str.trim().replace(/[-_\s]+(.)?/g, function(match, c) {
-            return c.toUpperCase();
-        });
-    },
-
-    /**
-     * @returns {string} Capitalizes first letter of passed string;
-     * @param {string} str
-     */
-    capitalize: function(str) {
-        str = str === null ? '' : String(str);
-        return str.charAt(0).toUpperCase() + str.slice(1);
-    },
-
-    /**
-     * @returns {string} Turns string into human reading format;
-     * @param {string} str
-     */
-    humanize: function(str) {
-        return _.s.capitalize(_.s.underscored(str).replace(/_id$/, '').replace(/_/g, ' '));
-    },
-
-    /**
-     * @returns {string} trims string and replace spaces with underscores;
-     * @param {string} str
-     */
-    underscored: function(str) {
-        return str.trim().replace(/([a-z\d])([A-Z]+)/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase();
-    },
-
-    /**
-     * @returns {string} html encoded string
-     * Only encodes < and > to corresponding character references (same as .NET HtmEncode)
-     * @param {string} str - string to encode
-     * @param {bool} [singleQuote=false] - pass ture to encode single quote as &quot;
-     */
-    htmlEncode: function(str, singleQuote) {
-        //http://stackoverflow.com/a/4318199/1571103
-        //note: decided to use character entity references instead of numberic character references to mach .NET HtmlEncode method
-        var entityMap = {
-            // "<": "&#60;",
-            // ">": "&#62;",
-            "<": "&lt;",
-            ">": "&gt;",
+    var insertCache = function() {
+        c[key] = {
+            count: 1,
+            clearAfter: clearAfter
         };
-        var re = /[<>]/g;
-        if (singleQuote) {
-            entityMap["'"] = "&#39;";
-            re = /[<>']/g;
+        return 1;
+    };
+
+
+    if (c[key] === undefined) {
+        return insertCache();
+    }
+    else {
+        //key already inserted, get from cache
+        var obj = c[key];
+        if (obj.clearAfter > 0 && new Date().getTime() > obj.clearAfter) {
+            return insertCache(); //clear cache due to clearAfter being reached
         }
 
-        return String(str).replace(re, function(s) {
-            if (!s) return '';
-            return entityMap[s];
-        });
-    },
-
-    /**
-     * @returns {string} string with  html line breaks [<br/>] replaced with [\n]
-     * @param {string} str
-     */
-    htmlBreakToNewLine: function(str) {
-        return str.replace(/< ?br ?\/? ?>/gi, '\n');
-    },
-
-    /**
-     * @returns {string} passed string stripped of html tags
-     * @param {string} str
-     */
-    removeHtml: function(str) {
-        var tmp = document.createElement("DIV");
-        tmp.innerHTML = str;
-        return tmp.textContent || tmp.innerText || "";
+        r = obj.count + 1;
+        obj.count++;
+        c[key] = obj;
+        return r;
     }
 };
 
-(function() {
-    //this will error if lodash is not included
-    try {
-        var cache;
-        var browserInfo = function() {
-            var sf = this;
-            var getIeVersion = function() {
-                if (!sf.isIE) return 999;
-                // IE7: "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                // IE8: "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                // IE9: "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                // IE10:"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
-                // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
-                if (sf.ua.indexOf('msie') !== -1) return parseInt(sf.ua.split('msie')[1]);
-                else return parseInt(sf.ua.split('rv:')[1]);
+/**
+ * @returns {string} creates a key by converting each passed argument to a string and separting by underscore [_]
+ * use to easily create unique key for memoizing a function
+ * @param {*} n1 - pass as many args are desired
+ * @note this uses _.toStr which will automatically strigify complex objects, which can be slow
+ * @note not thorougly tested
+ */
+_.key = function(n1, n2, n3, n4) {
+    var r = '';
+    var args = Array.prototype.slice.call(arguments, 0);
+    for (var i = 0; i < args.length; i++) {
+        r += '_' + _.toStr(args[i], '', true);
+    }
+    return r;
+};
 
-                if (isNaN(sf.ieVersion)) {
-                    setTimeout(function() {
-                        throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
-                    }, 1);
-                    return 999; //set to max as a new version of IE likely wont be an issue
-                }
+/**
+ * generates random string using letters and numbers
+ * @param {int} len - length of generated string
+ * @param {string} [chartList] - characters used to generate string, leave default for
+ */
+_.genRandomString = function(len, charList) {
+    /**
+     * @returns {int} random number between min (included) and max (excluded)
+     * from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random     *
+     */
+    var randomNum = function(min, max) {
+        return Math.floor(Math.random() * (max - min)) + min;
+    };
+
+    if (_.empty(charList)) { //default doesnt include I|L|1|0|O
+        charList = 'ABCDEFGHJKMNPQRSTUVWZYZabcdefghjkmnpqrstuvwxyz23456789';
+    }
+    var charListLen = charList.length;
+
+    var r = '';
+    for (var i = 0; i < len; i++) {
+        r += charList[randomNum(0, charListLen)];
+    }
+    return r;
+};
+
+/**
+ * string maniuplation functions copied from [underscore.string](http://epeli.github.io/underscore.string/) (only copied the ones I want to use)
+ */
+_.s = {
+        /**
+         * @returns {bool} true if pass strings are equal (case insensitive) after trimming end white space
+         * @param {string} str1
+         * @param {string} str2
+         * @param {bool} [noTrim=false] - pass true to compare strings without first trimming end white space
+         */
+        equalsNoCase: function(str1, str2, noTrim) {
+            str1 = _.toStr(str1).toLowerCase();
+            str2 = _.toStr(str2).toLowerCase();
+            if (!noTrim) {
+                //3.8.2019: replace char code 160 (non breaking space, which looks exactly like a space) with space before trimming
+                str1 = _.replaceAll(str1, String.fromCharCode(160), ' ').trim();
+                str2 = _.replaceAll(str2, String.fromCharCode(160), ' ').trim();
+            }
+            return str1 === str2;
+        },
+
+        /**
+         * @returns {bool} true if pass strings are equal after trimming end white space
+         * @param {string} str1
+         * @param {string} str2
+         */
+        equals: function(str1, str2) {
+            return str1.trim() === str2.trim();
+        },
+
+        /**
+         * @returns {string} Converts passed string to camelcase;
+         * @param {string} str
+         */
+        camelize: function(str) {
+            return str.trim().replace(/[-_\s]+(.)?/g, function(match, c) {
+                return c.toUpperCase();
+            });
+        },
+
+        /**
+         * @returns {string} Capitalizes first letter of passed string;
+         * @param {string} str
+         */
+        capitalize: function(str) {
+            str = str === null ? '' : String(str);
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        },
+
+        /**
+         * @returns {string} Turns string into human reading format;
+         * @param {string} str
+         */
+        humanize: function(str) {
+            return _.s.capitalize(_.s.underscored(str).replace(/_id$/, '').replace(/_/g, ' '));
+        },
+
+        /**
+         * @returns {string} trims string and replace spaces with underscores;
+         * @param {string} str
+         */
+        underscored: function(str) {
+            return str.trim().replace(/([a-z\d])([A-Z]+)/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase();
+        },
+
+        /**
+         * @returns {string} html encoded string
+         * Only encodes < and > to corresponding character references (same as .NET HtmEncode)
+         * USE htmlEnoceAll to encode all html characters!
+         * @param {string} str - string to encode
+         * @param {bool} [singleQuote=false] - pass ture to encode single quote as &#39;
+         */
+        htmlEncode: function(str, singleQuote) {
+            //http://stackoverflow.com/a/4318199/1571103
+            //note: decided to use character entity references instead of numberic character references to mach .NET HtmlEncode method (except.NET method uses &#39 for single quote, so I am too..)
+
+            var entityMap = {
+                // "<": "&#60;",
+                // ">": "&#62;",
+                "<": "&lt;",
+                ">": "&gt;",
             };
-            this.ua = navigator.userAgent.toLowerCase();
-            /** @type {bool} indicates if browser is IE */
-            this.isIE = this.ua.indexOf('trident') !== -1;
-            /** @type {int} version of IE or 999 if not IE, this allows for simply check for like: if(ieVersion<9) */
-            this.ieVersion = getIeVersion();
-            /**
-             * gets mouse button clicked from event (normalizes < ie9 which had silly buttons)
-             * @returns {string} one of the following: left,right,middle
-             * @param {int} number - event.button from click event that has button number
-             * @param {bool} [isJqueryNormalized=false] - if true, this will assume jquery alraedy normalized to http://api.jquery.com/event.which/
-             */
-            this.mouseBtn = function(num, isJqueryNormalized) {
-                num = parseInt(num);
-                if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
+            //todo: clean this up (made a mess when adding double quote)
+            var re = /[<>]/g;
+            if (singleQuote) {
+                entityMap["'"] = "&#39;";
+                re = /[<>']/g;
+            }
 
-                var r = {
-                    Left: 'left',
-                    Right: 'right',
-                    Middle: 'middle'
-                };
-                if (isJqueryNormalized) {
-                    if (num === 1) return r.Left;
-                    else if (num === 2) return r.Middle;
-                    else if (num === 3) return r.Right;
-                    else if (num === 0) {
-                        //TODO: this is here becuase touch screens appear to result in 0, but i'm not completely sure if this is meant to be the case and if it is consistent
-                        return r.Left;
+            return String(str).replace(re, function(s) {
+                if (!s) return '';
+                return entityMap[s];
+            });
+        },
+
+        /**
+         * @returns {string} html encoded string
+         * encodes all html charcters (<,>,&,",')  (less than, greater than, ampersand, double quote, single quote)
+         * @param {string} str - string to encode
+         */
+        htmlEncodeAll: function(str) {
+            //http://stackoverflow.com/a/4318199/1571103
+            //note: decided to use character entity references instead of numberic character references to mach .NET HtmlEncode method (except.NET method uses &#39 for single quote, so I am too..)
+
+            // .NET HtmlAttributeEncode         http://referencesource.microsoft.com/#System.Web/Util/HttpEncoder.cs,46e7e533003d74d8
+            // .NET HtmlEncode                  http://referencesource.microsoft.com/#System/net/System/Net/WebUtility.cs,f0f99ddd66f61359
+            // difference: html encode only encodes double quote, single quote, ampersand, and less than; html attribute encode also includes greater than
+
+            var entityMap = {
+                "<": "&lt;",
+                ">": "&gt;",
+                "&": "&amp;",
+                "'": "&#39;",
+                "\"": "&quot;",
+            };
+            var re = /[<>'"]/g; //override above
+
+            return String(str).replace(re, function(s) {
+                if (!s) return '';
+                return entityMap[s];
+            });
+        },
+
+        /**
+         * @returns {string} string with  html line breaks [<br/>] replaced with [\n]
+         * @param {string} str
+         */
+        htmlBreakToNewLine: function(str) {
+            return str.replace(/< ?br ?\/? ?>/gi, '\n');
+        },
+
+        /**
+         * @returns {string} string with standard newline [\n] and tab [\t] (or 4x spaces) replaces with html line breaks [<br/>] and html spaces [&nbsp;]
+         * @param {string} str
+         */
+        toHtml: function(str) {
+            return str.replace(/\n/gi, '<br/>').replace(/\t/gi, '&nbsp;&nbsp;&nbsp;&nbsp;').replace(/    /gi, '&nbsp;&nbsp;&nbsp;&nbsp;');
+        },
+
+        /**
+         * @returns {string} string with html line breaks [<br/> and html spaces [&nbsp;] replaced with standard newline [\n] and space
+         * @param {string} str
+         * @note current does not support output of tab character [\t]
+         */
+        toNotHtml: function(str) {
+            return str.replace(/<br\/>/gi, '\n').replace(/&nbsp;/gi, ' ');
+        },
+
+        /**
+         * @returns {string} passed string stripped of html tags
+         * @param {string} str
+         */
+        removeHtml: function(str) {
+            var tmp = document.createElement("DIV");
+            tmp.innerHTML = str;
+            tmp = tmp.textContent || tmp.innerText || "";
+            //3.8.2019: if a '&nbsp;' was in the HTML it will get converted into char 160, which looks like whitespace but its actually not (can be very confusing!). Replace any of these with a normal space.
+            tmp = _.replaceAll(tmp, String.fromCharCode(160), ' ');
+            return tmp;
+        },
+
+        /**
+         * trims passed string to max length and shows trailing dots if trimmed
+         * @param {string} str - string to trim
+         * @param {int} maxLength - max length of string (incuding dots)
+         * @param {bool} [showDots=true] - if trailing dots should be shown if string is trimmed
+         * @param {bool} [trimLeft=false] - pass true to trim from left side instead of right side
+         * @param {bool} [dotsAfterMax=false] - if true, adding trailing dots if trimmed wont count towards max length (which will make max length 2 chars longer than expected)
+         */
+        trimLength: function(str, maxLength, showDots, trimLeft, dotsAfterMax) {
+            //if (_.empty(str)) return str;
+            maxLength = _.toInt(maxLength);
+            if (maxLength < 0) throw new RangeError('maxLength must be greater than or equal to zero: ' + maxLength);
+
+            var strLength = str.length,
+                count = Math.min(strLength, maxLength),
+                r = trimLeft ? str.slice(-1 * count) : str.substr(0, count);
+
+            //cant show dots if maxLength is less than 3 as result would only be dots...
+            if (showDots !== false && (dotsAfterMax || maxLength > 2) && strLength > maxLength) {
+                if (trimLeft) r = '..' + (dotsAfterMax ? r : r.substr(2));
+                else r = (dotsAfterMax ? r : r.substr(0, r.length - 2)) + '..';
+            }
+            return r;
+        },
+
+        /**
+         * for debugging: transforms whitespace characters (line breaks, tabs, and 2 or more concurrent spaces) into characters that can be read
+         * @param {string} str - string to trim
+         */
+        showWhiteSpace: function(str) {
+            if (str == null) return str;
+
+            if (str == " ") {
+                //special case: if string is exactly one space, then convert it to a value that shows us this
+                return "[1space]";
+            }
+
+            //note: order of replacments is important
+            str = _.replaceAll(str, "\r\n", "[/r/n]");
+            str = _.replaceAll(str, "\r", "[/r]"); //there can be a standalone /r
+            str = _.replaceAll(str, "\n", "[/n]");
+            str = _.replaceAll(str, "\t", "[/t]");
+            str = _.replaceAll(str, "  ", "[2space]");
+            //non breaking space (char 160) doesnt match space and can be very confusing becuase its hard to visualize!
+            str = _.replaceAll(str, String.fromCharCode(160), "[NoBrSpace]");
+            return str;
+        }
+    },
+
+    (function() {
+        //this will error if lodash is not included
+        try {
+            var cache;
+            var browserInfo = function() {
+                var sf = this;
+                var getIeVersion = function() {
+                    if (!sf.isIE) return 999;
+                    // IE7: "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE8: "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE9: "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE10:"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729)"
+                    // IE11:"Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; rv:11.0) like Gecko"
+                    if (sf.ua.indexOf('msie') !== -1) return parseInt(sf.ua.split('msie')[1]);
+                    else return parseInt(sf.ua.split('rv:')[1]);
+
+                    if (isNaN(sf.ieVersion)) {
+                        setTimeout(function() {
+                            throw new Error('failed to parse IE version. This function only supports IE 7 to 11, if a new vesion of IE came out then this needs to be updated');
+                        }, 1);
+                        return 999; //set to max as a new version of IE likely wont be an issue
                     }
-                    else throw new Error('invalid number passed for mouse click event: ' + num);
-                }
-                else {
-                    if (sf.ieVersion > 8) {
-                        if (num === 0) return r.Left;
-                        else if (num === 1) return r.Middle;
+                };
+                /** @type {string] lowercase userAgent */
+                this.ua = navigator.userAgent.toLowerCase();
+                /** @type {bool} indicates if browser is IE */
+                this.isIE = this.ua.indexOf('trident') !== -1;
+                /** @type {bool} indicates if browser is microsoft Edge */
+                this.isEdge = this.ua.indexOf('edge/') !== -1;
+                /** @type {int} version of IE or 999 if not IE, this allows for simply check for like: if(ieVersion<9) */
+                this.ieVersion = getIeVersion();
+                /**
+                 * gets mouse button clicked from event (normalizes < ie9 which had silly buttons)
+                 * @returns {string} one of the following: left,right,middle
+                 * @param {int} number - event.button from click event that has button number
+                 * @param {bool} [isJqueryNormalized=false] - if true, this will assume jquery alraedy normalized to http://api.jquery.com/event.which/
+                 */
+                this.mouseBtn = function(num, isJqueryNormalized) {
+                    num = parseInt(num);
+                    if (isNaN(num)) throw new TypeError('passed parameter `num` is not a number: ' + num + ';\n Its likely that the getButton (default or custom) function needs to be fixed if this was called using _.handleclick');
+
+                    var r = {
+                        Left: 'left',
+                        Right: 'right',
+                        Middle: 'middle'
+                    };
+                    if (isJqueryNormalized) {
+                        if (num === 1) return r.Left;
+                        else if (num === 2) return r.Middle;
+                        else if (num === 3) return r.Right;
+                        else if (num === 0) {
+                            //TODO: this is here becuase touch screens appear to result in 0, but i'm not completely sure if this is meant to be the case and if it is consistent
+                            return r.Left;
+                        }
+                        else throw new Error('invalid number passed for mouse click event: ' + num);
+                    }
+                    else {
+                        if (sf.ieVersion > 8) {
+                            if (num === 0) return r.Left;
+                            else if (num === 1) return r.Middle;
+                            else if (num === 2) return r.Right;
+                            else throw new Error('invalid number passed for mouse click event: ' + num);
+                        }
+                        //IE8 or earlier
+                        if (num === 1) return r.Left;
+                        else if (num === 4) return r.Middle;
                         else if (num === 2) return r.Right;
                         else throw new Error('invalid number passed for mouse click event: ' + num);
                     }
-                    //IE8 or earlier
-                    if (num === 1) return r.Left;
-                    else if (num === 4) return r.Middle;
-                    else if (num === 2) return r.Right;
-                    else throw new Error('invalid number passed for mouse click event: ' + num);
-                }
+                };
             };
-        };
-        /**
-         * @returns {browserInfo}
-         * @note currently this only used to detect IE version
-         * @note This function is only executed once (on first call) for performance
-         */
-        _.browser = function() {
-            if (!cache) cache = new browserInfo();
-            return cache;
-        };
-    }
-    catch (ex) {
-        setTimeout(function() {
-            console.log('error in _.browser');
-            throw ex;
-        }, 0);
-    }
-})();
-
+            /**
+             * @returns {browserInfo}
+             * @note currently this only used to detect IE version
+             * @note This function is only executed once (on first call) for performance
+             */
+            _.browser = function() {
+                if (!cache) cache = new browserInfo();
+                return cache;
+            };
+        }
+        catch (ex) {
+            setTimeout(function() {
+                console.log('error in _.browser');
+                throw ex;
+            }, 0);
+        }
+    })();
 
 /*
 NOTE: this appears to be the proper way to add functions, but I don't want to do it this way because tern fails to recognize is properly
