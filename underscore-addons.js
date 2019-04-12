@@ -2,7 +2,7 @@
 
 /*jshint maxerr:10000, eqnull:true */
 
-/*!     Version: 1.25
+/*!     Version: 1.26
  *     Created: 6.6.2014
  *         GIT: https://github.com/sevin7676/underscore.morgan
  *      Author: Morgan Yarbrough
@@ -766,16 +766,18 @@ _.v = function(value, name, separator, maxL, skipIf, noHtml, ops) {
  * @param {number} [ops.delay=300] - double click delay. Set to -1 to not use double click handling (double clicking will be ignored for middle and right click)
  * @param {bool} [ops.getButtonIsJqueryNormalized=true] when true, this will assume that getButton function returns numbers based on jquery `which` normalization
  * @param {string} [ops.clickInfoPropName=_clickInfo] - name of the property to add to arguments parameter that contains clickInfo class instance
- * @param
  * @param {function} [ops.getButton] - a function that accepts event parameter and returns clicked button number. Leave default to automatically parse standard jquery event.
+ * @param {function} [ops.debug=false] - set to true to automatically log debug info
+ * @param {function} [ops.ignoreRightClick=true] - if true, will not fire (func) event handler for right click. This is desired in most cases when binding with 'mousedown' (which is required for middle click to work) instead of binding with 'click', which will not catch middle or right clicks
+ *
  *
  * @note: this does not do binding! it only handles events. use the example below to handle
  *
  * @example
  *
  *      $('selector').on('mousedown', _.handleClick(function(e) {
- *          //NOTE: this example is incomplete! for a jquery mousedown as it wont do what you want...
- *          console.log('isDoubleClick= ' + e._clickInfo.isDouble);
+ *          //NOTE: must bind with mousedown to catch middle click (will ignore right click if ops.ignoreRightClick is true); Binding with 'click' will not catch middle click
+ *          console.log('newWindow= ' + e._clickInfo.newWindow;);//newWindow true if double, ctrl+left, or middle button
  *          console.log('button= ' + e._clickInfo.button);
  *      }));
  */
@@ -826,6 +828,8 @@ _.handleClick = function(func, ops) {
         delay: 300,
         clickInfoPropName: '_clickInfo',
         getButtonIsJqueryNormalized: true,
+        debug: false,
+        ignoreRightClick: true,
         /**
          * this default function parses normal and jquery event object and returns the 'which' object that is normalized.
          * http://api.jquery.com/category/events/event-object/.
@@ -844,11 +848,16 @@ _.handleClick = function(func, ops) {
         var ci = new clickInfo(args[0], clickCount > 1); //will throw own descriptive error
         try {
             args[0][ops.clickInfoPropName] = ci;
+            if (ops.ignoreRightClick && ci.isRight) return;
         }
         catch (ex) {
             throw new TypeError('_.handleClick Error: the event that triggered this did not pass the correct arugments. The first argument must be an object.\n\n' + ex);
         }
         clickCount = 0;
+        
+        if (ops.debug)
+            console.log('_.handleClick debug; clickCount:' + clickCount + '; \nclickInfo:', ci, '\nargs:', args);
+        
         func.apply(this, args);
     };
 
